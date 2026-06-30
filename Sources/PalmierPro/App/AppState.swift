@@ -171,6 +171,7 @@ final class AppState {
             }
         } catch {
             doc.close()
+            try? FileManager.default.removeItem(at: url)
             throw error
         }
         ProjectRegistry.shared.register(url)
