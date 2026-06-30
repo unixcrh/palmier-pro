@@ -451,8 +451,14 @@ final class AgentService {
         }
     }
 
+    private func nextNonSystemIndex(after index: Int) -> Int {
+        var next = index + 1
+        while next < messages.count, messages[next].role == .system { next += 1 }
+        return next
+    }
+
     private func resolvedToolUseIds(afterAssistantAt index: Int) -> Set<String> {
-        let next = index + 1
+        let next = nextNonSystemIndex(after: index)
         guard next < messages.count, messages[next].role == .user else { return [] }
         return Set(messages[next].blocks.compactMap {
             if case let .toolResult(id, _, _) = $0 { return id }
@@ -471,7 +477,7 @@ final class AgentService {
             }
             guard !toolUseIds.isEmpty else { continue }
 
-            let next = i + 1
+            let next = nextNonSystemIndex(after: i)
             let nextIsToolResult = next < messages.count
                 && messages[next].role == .user
                 && messages[next].blocks.contains(where: {

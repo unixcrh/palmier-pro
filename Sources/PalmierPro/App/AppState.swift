@@ -162,6 +162,7 @@ final class AppState {
         guard !FileManager.default.fileExists(atPath: url.path) else {
             throw ProjectError.nameTaken(url)
         }
+        let previous = activeProject
         let doc = instantiateProject(at: url)
         do {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
@@ -172,6 +173,7 @@ final class AppState {
         } catch {
             doc.close()
             try? FileManager.default.removeItem(at: url)
+            if let previous { showEditor(for: previous) }
             throw error
         }
         ProjectRegistry.shared.register(url)
