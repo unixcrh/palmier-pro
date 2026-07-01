@@ -21,6 +21,7 @@ struct CaptionTab: View {
     @State private var locale: Locale?
     @State private var supportedLocales: [Locale] = []
     @State private var isGenerating = false
+    @State private var estimatedCloudCost: Int?
     @State private var note: String?
     @State private var sourceExpanded = true
     @State private var settingsExpanded = true
@@ -62,6 +63,16 @@ struct CaptionTab: View {
     }
     private var canGenerateCaptions: Bool {
         effectiveCount > 0 && !isGenerating && cloudModeUnavailableMessage == nil
+    }
+    private var costEstimateKey: String {
+        "\(provider.rawValue)|\(sourceClipIds.joined(separator: ","))|\(isAutoSource)|\(locale?.identifier ?? "")"
+    }
+    private var costHelpText: String {
+        guard let cost = estimatedCloudCost else { return "Estimated cost. Actual billing may differ slightly." }
+        guard cost > 0 else { return "Cached — no credits used." }
+        guard let remaining = remainingCloudCredits else { return "\(CostEstimator.format(cost)) estimated. Actual billing may differ." }
+        if cost > remaining { return "\(CostEstimator.format(cost)) needed. Only \(remaining.formatted()) remaining." }
+        return "\(CostEstimator.format(cost)). \((remaining - cost).formatted()) remaining after this generation."
     }
 
     private static let translateLanguages = [
@@ -112,6 +123,16 @@ struct CaptionTab: View {
         }
         .onAppear { rememberSelectedClipTargets() }
         .onChange(of: editor.selectedClipIds) { _, _ in rememberSelectedClipTargets() }
+        .task(id: costEstimateKey) {
+            estimatedCloudCost = nil
+            guard provider == .cloud, effectiveCount > 0 else { return }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            let request = EditorViewModel.CaptionRequest(sourceClipIds: sourceClipIds, autoDetect: isAutoSource, locale: locale, provider: .cloud)
+            let cost = await editor.captionCloudCreditCost(for: request)
+            guard !Task.isCancelled else { return }
+            estimatedCloudCost = cost
+        }
     }
 
     private var sectionDivider: some View {
@@ -213,7 +234,7 @@ struct CaptionTab: View {
     }
 
     private var cloudCreditHelp: String {
-        "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses credits when a transcript is not cached."
+        "Cloud auto-detects languages, produces more accurate transcripts, can identify speakers, and uses 25 credits/hr when a transcript is not cached."
     }
 
     private func providerOption(_ option: TranscriptionProvider, title: String) -> some View {
@@ -469,19 +490,26 @@ struct CaptionTab: View {
             }
             HStack(spacing: AppTheme.Spacing.sm) {
                 Button(action: generate) {
-                    Text(cloudModeUnavailableMessage ?? "Generate Captions")
-                        .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
-                        .foregroundStyle(canGenerateCaptions ? AppTheme.Background.baseColor : AppTheme.Text.secondaryColor)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, AppTheme.Spacing.smMd)
-                        .background(
-                            RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
-                                .fill(canGenerateCaptions ? AppTheme.Accent.primary : AppTheme.Background.prominentColor)
-                        )
+                    HStack(spacing: AppTheme.Spacing.xs) {
+                        Text(cloudModeUnavailableMessage ?? "Generate Captions")
+                        if cloudModeUnavailableMessage == nil, provider == .cloud, let cost = estimatedCloudCost {
+                            Image(systemName: "dollarsign.circle.fill").font(.system(size: AppTheme.FontSize.xs))
+                            Text("\(cost)").monospacedDigit()
+                        }
+                    }
+                    .font(.system(size: AppTheme.FontSize.sm, weight: AppTheme.FontWeight.semibold))
+                    .foregroundStyle(canGenerateCaptions ? AppTheme.Background.baseColor : AppTheme.Text.secondaryColor)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.Spacing.smMd)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm)
+                            .fill(canGenerateCaptions ? AppTheme.Accent.primary : AppTheme.Background.prominentColor)
+                    )
                 }
                 .buttonStyle(.plain).focusable(false)
                 .disabled(!canGenerateCaptions)
+                .help(provider == .cloud ? costHelpText : "")
 
                 agentMenu
             }
