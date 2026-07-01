@@ -2,12 +2,20 @@ import Foundation
 
 extension ToolExecutor {
 
-    private static let removeWordsAllowedKeys: Set<String> = ["words", "cutAggressiveness", "language"]
+    private static let removeWordsAllowedKeys: Set<String> = ["words", "matches", "cutAggressiveness", "language"]
 
     func removeWords(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.removeWordsAllowedKeys, path: "remove_words")
-        guard let rawWords = args["words"] as? [Any], !rawWords.isEmpty else {
-            throw ToolError("Missing or empty 'words'. Pass word indices from get_transcript, e.g. [5, [12, 18]].")
+        let rawWords = args["words"] as? [Any]
+        let rawMatches = args["matches"] as? [Any]
+        if rawWords?.isEmpty == true || rawMatches?.isEmpty == true {
+            throw ToolError("remove_words: words or matches must not be empty.")
+        }
+        guard rawWords != nil || rawMatches != nil else {
+            throw ToolError("Missing 'words' or 'matches'. Pass word indices from get_transcript, e.g. [5, [12, 18]], or exact words like [\"um\", \"uh\"].")
+        }
+        guard rawWords == nil || rawMatches == nil else {
+            throw ToolError("remove_words: pass either words or matches, not both.")
         }
         let aggressiveness: CutAggressiveness
         if let raw = args.string("cutAggressiveness") {
@@ -24,16 +32,26 @@ extension ToolExecutor {
 
         var selected = Set<Int>(), ignored: [Int] = []
         let maxIndex = allWords.count - 1
-        for (a, b) in try Self.parseWordSpans(rawWords) {
-            let lo = min(a, b), hi = max(a, b)
-            // Clamp to the valid transcript range so an out-of-range span can't iterate billions of times.
-            if hi < 0 || lo > maxIndex { ignored.append(lo); continue }
-            if lo < 0 { ignored.append(lo) }
-            if hi > maxIndex { ignored.append(hi) }
-            for idx in max(0, lo)...min(maxIndex, hi) { selected.insert(idx) }
-        }
-        guard !selected.isEmpty else {
-            throw ToolError("None of the requested word indices are in range 0...\(maxIndex). Re-read get_transcript.")
+        if let rawWords {
+            for (a, b) in try Self.parseWordSpans(rawWords) {
+                let lo = min(a, b), hi = max(a, b)
+                // Clamp to the valid transcript range so an out-of-range span can't iterate billions of times.
+                if hi < 0 || lo > maxIndex { ignored.append(lo); continue }
+                if lo < 0 { ignored.append(lo) }
+                if hi > maxIndex { ignored.append(hi) }
+                for idx in max(0, lo)...min(maxIndex, hi) { selected.insert(idx) }
+            }
+            guard !selected.isEmpty else {
+                throw ToolError("None of the requested word indices are in range 0...\(maxIndex). Re-read get_transcript.")
+            }
+        } else if let rawMatches {
+            let matches = try Self.parseWordMatches(rawMatches)
+            for word in allWords where matches.contains(Self.normalizedWordMatch(word.text)) {
+                selected.insert(word.index)
+            }
+            guard !selected.isEmpty else {
+                throw ToolError("No transcript words matched: \(matches.sorted().joined(separator: ", ")). Re-read get_transcript or pass exact word indices.")
+            }
         }
 
         let keepGapFrames = msToFrames(aggressiveness.keptGapMs, fps: editor.timeline.fps)
@@ -112,6 +130,25 @@ extension ToolExecutor {
             }
             return (a, b)
         }
+    }
+
+    static func parseWordMatches(_ raw: [Any]) throws -> Set<String> {
+        let matches = try raw.enumerated().map { i, element in
+            guard let text = element as? String else {
+                throw ToolError("matches[\(i)]: expected a string.")
+            }
+            let normalized = normalizedWordMatch(text)
+            guard !normalized.isEmpty else {
+                throw ToolError("matches[\(i)]: expected a non-empty word.")
+            }
+            return normalized
+        }
+        return Set(matches)
+    }
+
+    static func normalizedWordMatch(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            .lowercased()
     }
 
     private static func intFromAny(_ v: Any) -> Int? {
