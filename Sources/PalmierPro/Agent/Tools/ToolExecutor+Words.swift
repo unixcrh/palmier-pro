@@ -17,8 +17,9 @@ extension ToolExecutor {
             aggressiveness = a
         } else { aggressiveness = .balanced }
 
-        let preferredLocale = try await Self.parseLocale(args, path: "remove_words")
-        let (allWords, _) = try await timelineWords(editor, preferredLocale: preferredLocale)
+        let context = try await transcriptionContext(args, path: "remove_words", preferLast: true)
+        let transcript = try await timelineTranscript(editor, context: context)
+        let allWords = transcript.words
         guard !allWords.isEmpty else { throw ToolError("No transcribable speech on the timeline.") }
 
         var selected = Set<Int>(), ignored: [Int] = []
@@ -39,8 +40,13 @@ extension ToolExecutor {
         var removedTexts: [String] = []
         var rangesByTrack: [Int: [FrameRange]] = [:]
         var involvedClips: [String] = []
-        forEachTimelineClipGroup(in: allWords) { clipId, trackIndex, clipStart, clipEnd, clipWords in
-            guard clipWords.contains(where: { selected.contains($0.index) }) else { return }
+        for group in transcript.groups() {
+            let clipId = group.clipId
+            let trackIndex = group.trackIndex
+            let clipStart = group.clipStartFrame
+            let clipEnd = group.clipEndFrame
+            let clipWords = group.words
+            guard clipWords.contains(where: { selected.contains($0.index) }) else { continue }
             removedTexts.append(contentsOf: clipWords.filter { selected.contains($0.index) && $0.endFrame > $0.startFrame }.map(\.text))
             let plan = clipWords.map {
                 WordCutPlanner.Word(startFrame: $0.startFrame, endFrame: $0.endFrame, selected: selected.contains($0.index))
@@ -87,6 +93,7 @@ extension ToolExecutor {
         var payload: [String: Any] = [
             "removedWords": removedTexts.count, "removedFrames": report.removedFrames,
             "tracksEdited": report.clearedTracks, "cutAggressiveness": aggressiveness.rawValue,
+            "transcriptionSource": context.provider.rawValue,
             "note": "Removed and closed the gaps. Re-read get_transcript before another remove_words.",
         ]
         let preview = removedTexts.prefix(24).joined(separator: " ")
