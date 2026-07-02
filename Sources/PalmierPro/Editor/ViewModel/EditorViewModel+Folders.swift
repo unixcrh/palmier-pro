@@ -32,13 +32,6 @@ extension EditorViewModel {
             .map(\.id))
     }
 
-    private func clipIdsReferencingAssets(_ assetIds: Set<String>) -> Set<String> {
-        Set(timeline.tracks
-            .flatMap(\.clips)
-            .filter { assetIds.contains($0.mediaRef) }
-            .map(\.id))
-    }
-
     // MARK: - Mutations
 
     @discardableResult
@@ -71,15 +64,7 @@ extension EditorViewModel {
 
         let before = mediaLibraryUndoSnapshot()
         let assetIdsToDelete = assetIds(inFolderIds: allFolderIds)
-        let clipIdsToRemove = clipIdsReferencingAssets(assetIdsToDelete)
-
-        if !clipIdsToRemove.isEmpty {
-            selectedClipIds.subtract(clipIdsToRemove)
-            for i in timeline.tracks.indices {
-                timeline.tracks[i].clips.removeAll { clipIdsToRemove.contains($0.id) }
-            }
-            pruneEmptyTracks()
-        }
+        let clipIdsToRemove = removeClipsReferencingAssets(assetIdsToDelete)
 
         mediaAssets.removeAll { assetIdsToDelete.contains($0.id) }
         mediaManifest.entries.removeAll { assetIdsToDelete.contains($0.id) }
@@ -169,7 +154,9 @@ extension EditorViewModel {
 
     func mediaLibraryUndoSnapshot() -> MediaLibraryUndoSnapshot {
         MediaLibraryUndoSnapshot(
-            timeline: timeline,
+            timelines: timelines,
+            activeTimelineId: activeTimelineId,
+            openTimelineIds: openTimelineIds,
             mediaManifest: mediaManifest,
             mediaAssets: mediaAssets,
             selectedClipIds: selectedClipIds,
@@ -183,7 +170,9 @@ extension EditorViewModel {
 
     func restoreMediaLibraryUndoSnapshot(_ snapshot: MediaLibraryUndoSnapshot, actionName: String) {
         let redo = mediaLibraryUndoSnapshot()
-        timeline = snapshot.timeline
+        timelines = snapshot.timelines
+        activeTimelineId = snapshot.activeTimelineId
+        openTimelineIds = snapshot.openTimelineIds
         mediaManifest = snapshot.mediaManifest
         mediaAssets = snapshot.mediaAssets
         selectedClipIds = snapshot.selectedClipIds
@@ -203,7 +192,9 @@ extension EditorViewModel {
 }
 
 struct MediaLibraryUndoSnapshot {
-    let timeline: Timeline
+    let timelines: [Timeline]
+    let activeTimelineId: String
+    let openTimelineIds: [String]
     let mediaManifest: MediaManifest
     let mediaAssets: [MediaAsset]
     let selectedClipIds: Set<String>
