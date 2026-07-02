@@ -153,19 +153,20 @@ extension MediaTab {
 
 extension MediaTab {
     var flatGridView: some View {
-        let assets = sortAndFilter(editor.mediaAssets)
-        let orderedIds = assets.map(\.id)
+        var cells = searchFilteredTimelines(editor.timelines).map { MediaCell(kind: .timeline($0)) }
+        cells.append(contentsOf: sortAndFilter(editor.mediaAssets).map { MediaCell(kind: .asset($0)) })
+        let orderedIds = cells.map(\.id)
         return GeometryReader { geo in
             let dims = gridDimensions(width: geo.size.width)
             gridScroll(
-                cells: assets,
+                cells: cells,
                 orderedIds: orderedIds,
                 cols: dims.cols,
                 tileWidth: dims.tileWidth,
                 spacing: dims.spacing,
                 topPadding: AppTheme.Spacing.sm
-            ) { asset in
-                assetCellView(for: asset)
+            ) { cell in
+                cellView(for: cell)
             }
         }
     }
@@ -184,8 +185,12 @@ extension MediaTab {
         let allFolders = editor.folders
             .map { ($0, editor.folderPath(for: $0.id).map(\.name).joined(separator: " / ")) }
             .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
-        var orderedIds = collapsedGroupedKeys.contains("") ? [] : rootAssets.map(\.id)
+        var orderedIds: [String] = []
+        if !collapsedGroupedKeys.contains("") {
+            orderedIds = filteredTimelines(in: nil).map { MediaPanelItemKey.timeline($0.id) } + rootAssets.map(\.id)
+        }
         for (folder, _) in allFolders where !collapsedGroupedKeys.contains(folder.id) {
+            orderedIds.append(contentsOf: filteredTimelines(in: folder.id).map { MediaPanelItemKey.timeline($0.id) })
             orderedIds.append(contentsOf: sortAndFilter(bucketed[folder.id] ?? []).map(\.id))
         }
         return GeometryReader { geo in
@@ -193,21 +198,23 @@ extension MediaTab {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                        if !rootAssets.isEmpty {
+                        let rootTimelines = filteredTimelines(in: nil)
+                        if !rootAssets.isEmpty || !rootTimelines.isEmpty {
                             groupedSection(
                                 title: "Library",
                                 folderId: nil,
+                                timelines: rootTimelines,
                                 assets: rootAssets,
                                 tileWidth: dims.tileWidth,
                                 spacing: dims.spacing
                             )
                         }
                         ForEach(allFolders, id: \.0.id) { folder, path in
-                            let assets = sortAndFilter(bucketed[folder.id] ?? [])
                             groupedSection(
                                 title: path,
                                 folderId: folder.id,
-                                assets: assets,
+                                timelines: filteredTimelines(in: folder.id),
+                                assets: sortAndFilter(bucketed[folder.id] ?? []),
                                 tileWidth: dims.tileWidth,
                                 spacing: dims.spacing
                             )
@@ -240,6 +247,7 @@ extension MediaTab {
     fileprivate func groupedSection(
         title: String,
         folderId: String?,
+        timelines: [Timeline],
         assets: [MediaAsset],
         tileWidth: CGFloat,
         spacing: CGFloat
@@ -298,7 +306,7 @@ extension MediaTab {
                 } else {
                     groupedSectionTitle(title)
                 }
-                Text("\(assets.count)")
+                Text("\(timelines.count + assets.count)")
                     .font(.system(size: AppTheme.FontSize.xs))
                     .foregroundStyle(AppTheme.Text.mutedColor)
                     .monospacedDigit()
@@ -310,7 +318,7 @@ extension MediaTab {
                     .fill(AppTheme.Border.subtleColor)
                     .frame(height: 0.5)
 
-                if assets.isEmpty {
+                if assets.isEmpty && timelines.isEmpty {
                     Text("Empty")
                         .font(.system(size: AppTheme.FontSize.xs))
                         .foregroundStyle(AppTheme.Text.mutedColor)
@@ -318,6 +326,12 @@ extension MediaTab {
                 } else {
                     let columns = [GridItem(.adaptive(minimum: thumbnailSize), spacing: spacing)]
                     LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
+                        ForEach(timelines) { timeline in
+                            timelineTile(timeline)
+                                .background(assetFrameReader(for: MediaPanelItemKey.timeline(timeline.id)))
+                                .frame(width: tileWidth)
+                                .id(MediaPanelItemKey.timeline(timeline.id))
+                        }
                         ForEach(assets) { asset in
                             assetCellView(for: asset)
                                 .frame(width: tileWidth)

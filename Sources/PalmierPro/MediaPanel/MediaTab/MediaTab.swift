@@ -481,7 +481,14 @@ struct MediaTab: View {
     }
 
     var timelinesInCurrentFolder: [Timeline] {
-        let timelines = editor.timelines.filter { $0.folderId == currentFolderId }
+        filteredTimelines(in: currentFolderId)
+    }
+
+    func filteredTimelines(in folderId: String?) -> [Timeline] {
+        searchFilteredTimelines(editor.timelines.filter { $0.folderId == folderId })
+    }
+
+    func searchFilteredTimelines(_ timelines: [Timeline]) -> [Timeline] {
         let q = searchQuery.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return timelines }
         return timelines.filter { $0.name.localizedCaseInsensitiveContains(q) }
