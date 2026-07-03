@@ -47,7 +47,8 @@ final class ToolExecutor {
             let resolved = try expandingIdPrefixes(in: args, editor: editor)
             result = try await run(tool, editor, resolved)
             // Record any edit that actually changed the timeline so `undo` can revert it.
-            if tool != .undo, !result.isError, editor.timeline != before,
+            // A timeline switch changes `editor.timeline` without registering an undo.
+            if tool != .undo, tool != .setActiveTimeline, !result.isError, editor.timeline != before,
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
@@ -125,6 +126,9 @@ final class ToolExecutor {
         case .deleteFolder:  return try deleteFolder(editor, args)
         case .sendFeedback:  return try await sendFeedback(editor, args)
         case .setProjectSettings: return try setProjectSettings(editor, args)
+        case .createTimeline:     return try createTimeline(editor, args)
+        case .setActiveTimeline:  return try setActiveTimeline(editor, args)
+        case .duplicateTimeline:  return try duplicateTimeline(editor, args)
         case .readSkill:     return readSkill(args)
         case .getProjects, .openProject, .newProject:
             return await runProjectTool(tool, args)

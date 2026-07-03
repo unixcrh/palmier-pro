@@ -44,6 +44,9 @@ enum ToolName: String, CaseIterable, Sendable {
     case deleteFolder = "delete_folder"
     case sendFeedback = "send_feedback"
     case setProjectSettings = "set_project_settings"
+    case createTimeline = "create_timeline"
+    case setActiveTimeline = "set_active_timeline"
+    case duplicateTimeline = "duplicate_timeline"
     case readSkill = "read_skill"
     case getProjects = "get_projects"
     case openProject = "open_project"
@@ -874,6 +877,35 @@ enum ToolDefinitions {
                     "height": ["type": "integer", "description": "Canvas height in pixels. Use with width for an exact resolution. Mutually exclusive with aspectRatio."],
                     "aspectRatio": ["type": "string", "enum": ["16:9", "9:16", "1:1", "4:3", "2.4:1", "9:14"], "description": "Preset aspect ratio — sets both width and height from the preset, or combined with quality to pick a specific size. Mutually exclusive with width/height."],
                     "quality": ["type": "string", "enum": ["720p", "1080p", "2K", "4K"], "description": "Resolution quality preset — scales the short edge to the target while preserving the current (or specified) aspect ratio."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .createTimeline,
+            description: "Creates a new empty timeline in the project and switches to it — every read and edit tool now targets it. Settings (fps, resolution) are inherited from the previously active timeline. Returns the new timelineId. Undoable.\n\nUse timelines to organize a project: alternate versions, sections assembled separately, or reusable groups. A timeline can be placed inside another as a single clip (the user drops it from the media panel); it then appears as a clip with mediaType 'sequence' whose mediaRef is the timelineId.",
+            inputSchema: objectSchema(
+                properties: [
+                    "name": ["type": "string", "description": "Optional display name. Defaults to 'Timeline N'."],
+                ]
+            )
+        ),
+        AgentTool(
+            name: .setActiveTimeline,
+            description: "Switches the active timeline — the one every read and edit tool targets and the one the user sees. get_timeline lists the project's timelines (with timelineId) whenever there is more than one. Always re-read get_timeline after switching; clip and track ids from the previous timeline are no longer valid targets.\n\nTo edit the contents of a nested timeline (a clip with mediaType 'sequence'), switch to its mediaRef.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Timeline id from get_timeline's timelines list (or a sequence clip's mediaRef)."],
+                ],
+                required: ["timelineId"]
+            )
+        ),
+        AgentTool(
+            name: .duplicateTimeline,
+            description: "Duplicates a timeline — the versioning primitive: copy, then edit the copy (\"a tighter cut\", \"a 9:16 version\") while the original stays intact. Copies all tracks, clips, and settings, switches to the copy, and returns its timelineId. Every clip and track id in the copy is NEW — re-read get_timeline before editing. Undoable.",
+            inputSchema: objectSchema(
+                properties: [
+                    "timelineId": ["type": "string", "description": "Timeline to duplicate. Defaults to the active timeline."],
+                    "name": ["type": "string", "description": "Optional name for the copy. Defaults to '<name> copy'."],
                 ]
             )
         ),
