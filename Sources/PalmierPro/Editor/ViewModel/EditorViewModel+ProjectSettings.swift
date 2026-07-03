@@ -147,7 +147,6 @@ extension EditorViewModel {
 
 extension Timeline {
     mutating func rescaleFrames(by scale: Double) {
-        viewState.playheadFrame = Int((Double(viewState.playheadFrame) * scale).rounded())
         for ti in tracks.indices {
             let clipIndices = tracks[ti].clips.indices.sorted {
                 tracks[ti].clips[$0].startFrame < tracks[ti].clips[$1].startFrame

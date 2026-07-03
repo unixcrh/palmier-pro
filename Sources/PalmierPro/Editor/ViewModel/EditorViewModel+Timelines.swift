@@ -16,7 +16,7 @@ extension EditorViewModel {
     func applyProjectFile(_ file: ProjectFile) {
         guard !file.timelines.isEmpty else { return }
         timelines = file.timelines
-        liveViewStates = Dictionary(uniqueKeysWithValues: file.timelines.map { ($0.id, $0.viewState) })
+        liveViewStates = file.viewStates ?? [:]
         let ids = Set(file.timelines.map(\.id))
         activeTimelineId = file.activeTimelineId.flatMap { ids.contains($0) ? $0 : nil }
             ?? file.timelines[0].id
@@ -27,14 +27,16 @@ extension EditorViewModel {
         restoreActiveViewState()
     }
 
-    /// Snapshot for save/export: timelines with live view state merged in.
+    /// Snapshot for save/export; view states pruned to timelines that still exist.
     func projectFileSnapshot() -> ProjectFile {
         stashActiveViewState()
-        var merged = timelines
-        for i in merged.indices {
-            if let vs = liveViewStates[merged[i].id] { merged[i].viewState = vs }
-        }
-        return ProjectFile(timelines: merged, activeTimelineId: activeTimelineId, openTimelineIds: openTimelineIds)
+        let ids = Set(timelines.map(\.id))
+        return ProjectFile(
+            timelines: timelines,
+            activeTimelineId: activeTimelineId,
+            openTimelineIds: openTimelineIds,
+            viewStates: liveViewStates.filter { ids.contains($0.key) }
+        )
     }
 
     func stashActiveViewState() {
@@ -46,7 +48,7 @@ extension EditorViewModel {
     }
 
     func viewState(for id: String) -> TimelineViewState {
-        liveViewStates[id] ?? timeline(for: id)?.viewState ?? TimelineViewState()
+        liveViewStates[id] ?? TimelineViewState()
     }
 
     func restoreActiveViewState() {
@@ -122,10 +124,9 @@ extension EditorViewModel {
         guard var copy = timeline(for: id) else { return nil }
         copy.id = UUID().uuidString
         copy.name = duplicateName(for: copy.name)
-        copy.viewState = viewState(for: id)
         copy.regenerateIds()
         timelines.append(copy)
-        liveViewStates[copy.id] = copy.viewState
+        liveViewStates[copy.id] = viewState(for: id)
         registerRemoveUndo(for: copy.id, actionName: "Duplicate Timeline")
         if activate { activateTimeline(copy.id) }
         return copy.id
@@ -153,12 +154,13 @@ extension EditorViewModel {
                 ?? timelines.first { $0.id != id }!.id
             activateTimeline(fallback)
         }
-        var removed = timelines[index]
-        removed.viewState = viewState(for: id)
+        let removed = timelines[index]
+        let removedViewState = viewState(for: id)
         timelines.remove(at: index)
+        liveViewStates.removeValue(forKey: id)
         if let openIndex { openTimelineIds.remove(at: openIndex) }
         undoManager?.registerUndo(withTarget: self) { vm in
-            vm.reinsertTimeline(removed, at: index, openAt: openIndex, reactivate: wasActive)
+            vm.reinsertTimeline(removed, viewState: removedViewState, at: index, openAt: openIndex, reactivate: wasActive)
         }
         undoManager?.setActionName("Delete Timeline")
     }
@@ -178,9 +180,9 @@ extension EditorViewModel {
         openTimelineIds = [id]
     }
 
-    private func reinsertTimeline(_ t: Timeline, at index: Int, openAt openIndex: Int?, reactivate: Bool) {
+    private func reinsertTimeline(_ t: Timeline, viewState: TimelineViewState, at index: Int, openAt openIndex: Int?, reactivate: Bool) {
         timelines.insert(t, at: min(index, timelines.count))
-        liveViewStates[t.id] = t.viewState
+        liveViewStates[t.id] = viewState
         if let openIndex {
             openTimelineIds.insert(t.id, at: min(openIndex, openTimelineIds.count))
         }

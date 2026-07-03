@@ -194,16 +194,14 @@ struct MultiTimelineTests {
         #expect(e.timeline(for: secondId)?.width == 3840)   // B untouched
     }
 
-    @Test func projectFileSnapshotMergesLiveViewState() {
+    @Test func projectFileSnapshotCarriesLiveViewState() {
         let e = EditorViewModel()
         e.timeline.tracks = [Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 500)])]
         e.currentFrame = 250
         e.zoomScale = 6
         let file = e.projectFileSnapshot()
-        #expect(file.timelines[0].viewState.playheadFrame == 250)
-        #expect(file.timelines[0].viewState.zoomScale == 6)
-        // Snapshot must not dirty the observed timelines (Equatable stays clean).
-        #expect(e.timelines[0].viewState == TimelineViewState())
+        #expect(file.viewStates?[e.activeTimelineId]?.playheadFrame == 250)
+        #expect(file.viewStates?[e.activeTimelineId]?.zoomScale == 6)
     }
 
     @Test func deleteActiveTimelineUndoReactivatesWithFreshViewState() {
@@ -282,8 +280,8 @@ struct MultiTimelineTests {
         let secondId = e.createTimeline(activate: false)
         var second = e.timeline(for: secondId)!
         second.tracks = [Fixtures.videoTrack(clips: [Fixtures.clip(start: 60, duration: 60)])]
-        second.viewState.playheadFrame = 90
         e.timelines[e.timelines.firstIndex(where: { $0.id == secondId })!] = second
+        e.liveViewStates[secondId] = TimelineViewState(playheadFrame: 90)
 
         e.applyTimelineSettings(fps: 60, width: e.timeline.width, height: e.timeline.height)
 
@@ -292,7 +290,7 @@ struct MultiTimelineTests {
         let rescaled = e.timeline(for: secondId)!
         #expect(rescaled.tracks[0].clips[0].startFrame == 120)
         #expect(rescaled.tracks[0].clips[0].durationFrames == 120)
-        #expect(rescaled.viewState.playheadFrame == 180)
+        #expect(e.viewState(for: secondId).playheadFrame == 180)
     }
 }
 
@@ -311,19 +309,22 @@ struct ProjectFilePersistenceTests {
     @Test func projectFileRoundTripsViewStateAndTabs() throws {
         var a = Fixtures.timeline()
         a.name = "Main"
-        a.viewState = TimelineViewState(playheadFrame: 42, zoomScale: 7, scrollOffsetX: 300)
         a.tracks = [Fixtures.videoTrack()]
         a.tracks[0].displayHeight = 88
         var b = Fixtures.timeline()
         b.name = "Vertical"
+        let vs = TimelineViewState(playheadFrame: 42, zoomScale: 7, scrollOffsetX: 300)
 
-        let file = ProjectFile(timelines: [a, b], activeTimelineId: b.id, openTimelineIds: [a.id, b.id])
+        let file = ProjectFile(
+            timelines: [a, b], activeTimelineId: b.id, openTimelineIds: [a.id, b.id],
+            viewStates: [a.id: vs]
+        )
         let decoded = try ProjectFile.decode(JSONEncoder().encode(file))
 
         #expect(decoded.timelines.map(\.name) == ["Main", "Vertical"])
         #expect(decoded.activeTimelineId == b.id)
         #expect(decoded.openTimelineIds == [a.id, b.id])
-        #expect(decoded.timelines[0].viewState == a.viewState)
+        #expect(decoded.viewStates?[a.id] == vs)
         #expect(decoded.timelines[0].tracks[0].displayHeight == 88)
     }
 

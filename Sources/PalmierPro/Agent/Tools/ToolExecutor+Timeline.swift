@@ -35,7 +35,6 @@ extension ToolExecutor {
             }
             dict["tracks"] = tracks
         }
-        dict.removeValue(forKey: "viewState")
         dict["totalFrames"] = editor.timeline.totalFrames
         if let window {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
