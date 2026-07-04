@@ -540,10 +540,24 @@ final class EditorViewModel {
         return (Double(sw) / Double(sh)) / canvasAspect
     }
 
+    /// Source pixel dimensions for a clip: asset dims, or the child timeline's for nest carriers.
+    func sourceDimensions(for clip: Clip) -> (width: Int, height: Int)? {
+        if let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
+           let sw = asset.sourceWidth, let sh = asset.sourceHeight, sw > 0, sh > 0 {
+            return (sw, sh)
+        }
+        if clip.sourceClipType == .sequence, let child = timeline(for: clip.mediaRef),
+           child.width > 0, child.height > 0 {
+            return (child.width, child.height)
+        }
+        return nil
+    }
+
     /// Source aspect ratio relative to canvas; nil when source dimensions are unknown.
     func mediaCanvasAspect(for clip: Clip) -> Double? {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }) else { return nil }
-        return mediaCanvasAspect(for: asset, canvasWidth: timeline.width, canvasHeight: timeline.height)
+        guard let dims = sourceDimensions(for: clip), timeline.width > 0, timeline.height > 0 else { return nil }
+        let canvasAspect = Double(timeline.width) / Double(timeline.height)
+        return (Double(dims.width) / Double(dims.height)) / canvasAspect
     }
 
     func cropFittingAspect(
@@ -552,10 +566,8 @@ final class EditorViewModel {
         anchorX: Double = 0.5,
         anchorY: Double = 0.5
     ) -> Crop {
-        guard let asset = mediaAssets.first(where: { $0.id == clip.mediaRef }),
-              let sw = asset.sourceWidth, let sh = asset.sourceHeight,
-              sw > 0, sh > 0, target > 0 else { return Crop() }
-        let sourceAspect = Double(sw) / Double(sh)
+        guard let dims = sourceDimensions(for: clip), target > 0 else { return Crop() }
+        let sourceAspect = Double(dims.width) / Double(dims.height)
         if abs(sourceAspect - target) < 0.0001 { return Crop() }
         let ax = min(1, max(0, anchorX))
         let ay = min(1, max(0, anchorY))
