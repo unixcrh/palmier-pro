@@ -208,7 +208,7 @@ enum ClipRenderer {
 
     // MARK: - Waveform
 
-    private static let washColor = NSColor.black.withAlphaComponent(AppTheme.Opacity.strong).cgColor
+    private static let washColor = AppTheme.Status.error.withAlphaComponent(AppTheme.Opacity.medium).cgColor
     private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
 
     private static func drawWaveform(

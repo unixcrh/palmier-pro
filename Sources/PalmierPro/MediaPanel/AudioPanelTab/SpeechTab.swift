@@ -31,6 +31,7 @@ struct SpeechTab: View {
                                 .foregroundStyle(AppTheme.Text.mutedColor)
                         }
                     }
+                    removeDeadAirRow
                 }
             }
             .padding(.horizontal, AppTheme.Spacing.lgXl)
@@ -39,5 +40,21 @@ struct SpeechTab: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var removeDeadAirRow: some View {
+        let deadAir = editor.allDeadAir()
+        let count = deadAir?.ranges.count ?? 0
+        return HStack(spacing: AppTheme.Spacing.sm) {
+            Button("Remove Dead Air") { editor.removeAllDeadAir() }
+                .controlSize(.small)
+                .disabled(count == 0)
+                .help("Ripple-deletes every dead-air section; downstream clips close the gaps.")
+            if count > 0 {
+                Text(count == 1 ? "1 section" : "\(count) sections")
+                    .font(.system(size: AppTheme.FontSize.xs))
+                    .foregroundStyle(AppTheme.Text.mutedColor)
+            }
+        }
     }
 }
