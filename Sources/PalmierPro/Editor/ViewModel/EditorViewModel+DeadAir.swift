@@ -60,12 +60,15 @@ extension EditorViewModel {
         }
     }
 
-    func removeAllDeadAir() {
-        guard let (trackIndex, ranges) = allDeadAir() else { return }
-        if case .refused(let reason) = rippleDeleteRangesOnTrack(trackIndex: trackIndex, ranges: ranges) {
+    @discardableResult
+    func removeAllDeadAir() -> (outcome: RippleRangesOutcome, sections: Int)? {
+        guard let (trackIndex, ranges) = allDeadAir() else { return nil }
+        let outcome = rippleDeleteRangesOnTrack(trackIndex: trackIndex, ranges: ranges)
+        if case .refused(let reason) = outcome {
             NSSound.beep()
             Log.editor.notice("remove dead air blocked: \(reason)")
         }
+        return (outcome, ranges.count)
     }
 
     private func timelineRange(clip: Clip, sourceStart: Double, sourceEnd: Double) -> FrameRange? {
