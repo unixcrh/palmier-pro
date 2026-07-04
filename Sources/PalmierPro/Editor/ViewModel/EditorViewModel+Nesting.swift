@@ -71,6 +71,7 @@ extension EditorViewModel {
                 return c
             })
         }
+        child.regenerateIds()
 
         timelines.append(child)
         registerRemoveUndo(for: child.id, actionName: "Nest Clips")
@@ -79,10 +80,20 @@ extension EditorViewModel {
             for i in timeline.tracks.indices {
                 timeline.tracks[i].clips.removeAll { ids.contains($0.id) }
             }
+            let span = start..<(start + duration)
+            var videoIdx = lanes.first { $0.type != .audio }?.index
+            var audioIdx = lanes.first { $0.type == .audio }?.index
+            if let vi = videoIdx, trackOverlaps(vi, span: span) {
+                let inserted = insertTrack(at: vi, type: .video)
+                videoIdx = inserted
+                if let ai = audioIdx, ai >= inserted { audioIdx = ai + 1 }
+            }
+            if let ai = audioIdx, trackOverlaps(ai, span: span) {
+                audioIdx = insertTrack(at: ai + 1, type: .audio)
+            }
             let carriers = insertNestCarriers(
                 for: child, start: start, duration: duration,
-                videoIdx: lanes.first { $0.type != .audio }?.index,
-                audioIdx: lanes.first { $0.type == .audio }?.index
+                videoIdx: videoIdx, audioIdx: audioIdx
             )
             pruneEmptyTracks()
             selectedClipIds = carriers
@@ -149,6 +160,10 @@ extension EditorViewModel {
             || audioCarrier.map({ $0.fadeInFrames > 0 || $0.fadeOutFrames > 0 || $0.volumeTrack != nil }) == true {
             mediaPanelToast = "Nest settings discarded. Undo to restore."
         }
+    }
+
+    private func trackOverlaps(_ idx: Int, span: Range<Int>) -> Bool {
+        timeline.tracks[idx].clips.contains { $0.startFrame < span.upperBound && $0.endFrame > span.lowerBound }
     }
 
     /// Group-level looks that have no per-clip equivalent after decompose.

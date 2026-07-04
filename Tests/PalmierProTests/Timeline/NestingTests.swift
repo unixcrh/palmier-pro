@@ -81,6 +81,49 @@ struct NestingTests {
         #expect(e.timelines.count == 1)
     }
 
+    @Test func nestSelectedClipsKeepsUnselectedClipInsideSpan() {
+        let e = EditorViewModel()
+        e.undoManager = UndoManager()
+        e.timeline.tracks = [
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "s1", start: 0, duration: 20),
+                Fixtures.clip(id: "mid", start: 30, duration: 20),
+                Fixtures.clip(id: "s2", start: 60, duration: 20),
+            ])
+        ]
+        e.selectedClipIds = ["s1", "s2"]
+
+        e.nestSelectedClips()
+
+        // The unselected mid clip survives on its track; the carrier lands on a fresh one.
+        let all = e.timeline.tracks.flatMap(\.clips)
+        #expect(all.contains { $0.id == "mid" })
+        let carrier = all.first { $0.sourceClipType == .sequence }
+        #expect(carrier?.startFrame == 0)
+        #expect(carrier?.durationFrames == 80)
+        #expect(e.timeline.tracks.count == 2)
+    }
+
+    @Test func nestSelectedClipsRegeneratesGroupIdsInChild() {
+        let e = EditorViewModel()
+        e.undoManager = UndoManager()
+        var v = Fixtures.clip(id: "v", start: 0, duration: 30)
+        v.linkGroupId = "g1"
+        var a = Fixtures.clip(id: "a", mediaType: .audio, start: 0, duration: 30)
+        a.linkGroupId = "g1"
+        e.timeline.tracks = [Fixtures.videoTrack(clips: [v]), Fixtures.audioTrack(clips: [a])]
+        e.selectedClipIds = ["v"]
+
+        e.nestSelectedClips()
+
+        // A partially-nested link group must not span two timelines.
+        let child = e.timelines.first { $0.name == "Nest 1" }
+        let moved = child?.tracks.flatMap(\.clips).first
+        #expect(moved != nil)
+        #expect(moved?.linkGroupId != "g1")
+        #expect(e.timeline.tracks.flatMap(\.clips).contains { $0.id == "a" && $0.linkGroupId == "g1" })
+    }
+
     @Test func decomposeReplacesNestWithChildClipsInPlace() {
         let e = EditorViewModel()
         let undo = UndoManager()
