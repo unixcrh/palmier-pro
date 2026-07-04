@@ -38,10 +38,10 @@ final class VideoProject: NSDocument {
     /// Set when media.json existed but failed to decode, so saves preserve it instead of clobbering.
     private nonisolated(unsafe) var manifestLoadFailed = false
 
-    /// Captured on main thread before writes may continue off-main.
-    private nonisolated(unsafe) var snapshotTimeline: Data?
-    private nonisolated(unsafe) var snapshotManifest: Data?
-    private nonisolated(unsafe) var snapshotGenerationLog: Data?
+    /// Captured on main thread as cheap value copies; encoded off-main in write().
+    private nonisolated(unsafe) var snapshotProjectFile: ProjectFile?
+    private nonisolated(unsafe) var snapshotManifest: MediaManifest?
+    private nonisolated(unsafe) var snapshotGenerationLog: GenerationLog?
     private nonisolated(unsafe) var snapshotThumbnail: Data?
     private nonisolated(unsafe) var snapshotChatSessionFiles: [(name: String, data: Data)] = []
     private nonisolated(unsafe) var snapshotSourceProjectURL: URL?
@@ -51,6 +51,9 @@ final class VideoProject: NSDocument {
     // MARK: - Persistence
 
     override class var autosavesInPlace: Bool { true }
+
+    // The save snapshot is captured on main before super.save; the encode + disk write run off-main.
+    override func canAsynchronouslyWrite(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType) -> Bool { true }
 
     @MainActor
     static func load(from url: URL) async throws -> VideoProject {
@@ -150,16 +153,18 @@ final class VideoProject: NSDocument {
             snapshotPreparedForWrite = false
             snapshotSourceProjectURL = nil
         }
-        guard let data = snapshotTimeline else {
-            Log.project.error("save: snapshotTimeline missing at write()")
+        // Snapshot values are captured; editing can resume while we encode and write.
+        unblockUserInteraction()
+        guard let file = snapshotProjectFile, let data = try? JSONEncoder().encode(file) else {
+            Log.project.error("save: project snapshot missing at write()")
             throw CocoaError(.fileWriteUnknown)
         }
 
         try Self.writeProjectPackage(
             ProjectPackageSnapshot(
                 timeline: data,
-                manifest: snapshotManifest,
-                generationLog: snapshotGenerationLog,
+                manifest: snapshotManifest.flatMap { try? JSONEncoder().encode($0) },
+                generationLog: snapshotGenerationLog.flatMap { try? JSONEncoder().encode($0) },
                 thumbnail: snapshotThumbnail,
                 chatSessionFiles: snapshotChatSessionFiles
             ),
@@ -171,9 +176,9 @@ final class VideoProject: NSDocument {
     }
 
     private func captureSaveSnapshot() {
-        snapshotTimeline = try? JSONEncoder().encode(editorViewModel.projectFileSnapshot())
-        snapshotManifest = Self.manifestSnapshotData(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
-        snapshotGenerationLog = try? JSONEncoder().encode(editorViewModel.generationLog)
+        snapshotProjectFile = editorViewModel.projectFileSnapshot()
+        snapshotManifest = Self.manifestSnapshot(manifest: editorViewModel.mediaManifest, loadFailed: manifestLoadFailed)
+        snapshotGenerationLog = editorViewModel.generationLog
         snapshotThumbnail = captureThumbnail()
         snapshotChatSessionFiles = editorViewModel.agentService.sessions
             .filter { !$0.messages.isEmpty }
@@ -183,10 +188,10 @@ final class VideoProject: NSDocument {
         snapshotPreparedForWrite = true
     }
 
-    nonisolated static func manifestSnapshotData(manifest: MediaManifest, loadFailed: Bool) -> Data? {
+    nonisolated static func manifestSnapshot(manifest: MediaManifest, loadFailed: Bool) -> MediaManifest? {
         // If the manifest failed to load, don't overwrite the (recoverable) original with an empty one.
         if loadFailed && manifest.entries.isEmpty && manifest.folders.isEmpty { return nil }
-        return try? JSONEncoder().encode(manifest)
+        return manifest
     }
 
     private nonisolated static func requiredData(_ name: String, in packageURL: URL) throws -> Data {
