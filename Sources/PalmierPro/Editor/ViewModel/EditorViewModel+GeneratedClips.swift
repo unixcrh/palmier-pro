@@ -68,7 +68,6 @@ extension EditorViewModel {
         // Rebuild when a touched timeline is visible from the active one, including through nests.
         if touched.contains(activeTimelineId)
             || timeline.reachableTimelines(resolve: timeline(for:)).contains(where: { touched.contains($0.id) }) {
-            timelineRenderRevision &+= 1
             notifyTimelineChanged()
         }
     }

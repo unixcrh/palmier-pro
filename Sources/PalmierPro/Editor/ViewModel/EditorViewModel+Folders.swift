@@ -194,7 +194,6 @@ extension EditorViewModel {
     func restoreMediaLibraryUndoSnapshot(_ snapshot: MediaLibraryUndoSnapshot, actionName: String) {
         let redo = mediaLibraryUndoSnapshot()
         timelines = snapshot.timelines
-        timelineRenderRevision &+= 1
         openTimelineIds = snapshot.openTimelineIds
         if activeTimelineId != snapshot.activeTimelineId {
             activateTimeline(snapshot.activeTimelineId)
