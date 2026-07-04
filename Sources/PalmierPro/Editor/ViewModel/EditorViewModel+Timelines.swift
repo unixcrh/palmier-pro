@@ -16,6 +16,7 @@ extension EditorViewModel {
     func applyProjectFile(_ file: ProjectFile) {
         guard !file.timelines.isEmpty else { return }
         timelines = file.timelines
+        timelineRenderRevision &+= 1
         liveViewStates = file.viewStates ?? [:]
         let ids = Set(file.timelines.map(\.id))
         activeTimelineId = file.activeTimelineId.flatMap { ids.contains($0) ? $0 : nil }
@@ -66,6 +67,7 @@ extension EditorViewModel {
         clearTimelineScopedState()
         activeTimelineId = id
         if !openTimelineIds.contains(id) { openTimelineIds.append(id) }
+        timelineRenderRevision &+= 1
         restoreActiveViewState()
         // refreshVisuals would apply the new timeline to the old track mappings — rebuild alone is correct.
         notifyTimelineChanged(refreshVisuals: false)
@@ -216,6 +218,7 @@ extension EditorViewModel {
             }
             if touched { timelines[i].tracks.removeAll(where: \.clips.isEmpty) }
         }
+        if !removed.isEmpty { timelineRenderRevision &+= 1 }
         selectedClipIds.subtract(removed)
         return removed
     }

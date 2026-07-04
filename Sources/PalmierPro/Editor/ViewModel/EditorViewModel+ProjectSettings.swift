@@ -83,6 +83,7 @@ extension EditorViewModel {
             }
         }
         undoManager?.setActionName("Change Project Settings")
+        timelineRenderRevision &+= 1
         notifyTimelineChanged()
     }
 

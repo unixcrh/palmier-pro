@@ -24,9 +24,7 @@ final class EditorViewModel {
 
     // MARK: - Persisted state (synced with VideoProject)
 
-    var timelines: [Timeline] {
-        didSet { timelineRenderRevision &+= 1 }
-    }
+    var timelines: [Timeline]
     var activeTimelineId: String
     var openTimelineIds: [String]
     @ObservationIgnored var liveViewStates: [String: TimelineViewState] = [:]
@@ -46,9 +44,11 @@ final class EditorViewModel {
             }
             activeTimelineId = newValue.id
             if !openTimelineIds.contains(newValue.id) { openTimelineIds.append(newValue.id) }
+            timelineRenderRevision &+= 1
         }
         _modify {
             let i = timelines.firstIndex(where: { $0.id == activeTimelineId }) ?? 0
+            defer { timelineRenderRevision &+= 1 }
             yield &timelines[i]
         }
     }
