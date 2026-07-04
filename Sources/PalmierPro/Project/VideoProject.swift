@@ -149,13 +149,18 @@ final class VideoProject: NSDocument {
                 snapshotSourceProjectURL = fileURL
             }
         }
-        defer {
-            snapshotPreparedForWrite = false
-            snapshotSourceProjectURL = nil
-        }
-        // Snapshot values are captured; editing can resume while we encode and write.
+
+        let file = snapshotProjectFile
+        let manifest = snapshotManifest
+        let generationLog = snapshotGenerationLog
+        let thumbnail = snapshotThumbnail
+        let chatSessionFiles = snapshotChatSessionFiles
+        let sourceURL = snapshotSourceProjectURL
+        snapshotPreparedForWrite = false
+        snapshotSourceProjectURL = nil
         unblockUserInteraction()
-        guard let file = snapshotProjectFile, let data = try? JSONEncoder().encode(file) else {
+
+        guard let file, let data = try? JSONEncoder().encode(file) else {
             Log.project.error("save: project snapshot missing at write()")
             throw CocoaError(.fileWriteUnknown)
         }
@@ -163,16 +168,16 @@ final class VideoProject: NSDocument {
         try Self.writeProjectPackage(
             ProjectPackageSnapshot(
                 timeline: data,
-                manifest: snapshotManifest.flatMap { try? JSONEncoder().encode($0) },
-                generationLog: snapshotGenerationLog.flatMap { try? JSONEncoder().encode($0) },
-                thumbnail: snapshotThumbnail,
-                chatSessionFiles: snapshotChatSessionFiles
+                manifest: manifest.flatMap { try? JSONEncoder().encode($0) },
+                generationLog: generationLog.flatMap { try? JSONEncoder().encode($0) },
+                thumbnail: thumbnail,
+                chatSessionFiles: chatSessionFiles
             ),
             to: url,
-            sourceURL: snapshotSourceProjectURL
+            sourceURL: sourceURL
         )
         // A real manifest was just written, so the unreadable original is gone; stop preserving it.
-        if snapshotManifest != nil { manifestLoadFailed = false }
+        if manifest != nil { manifestLoadFailed = false }
     }
 
     private func captureSaveSnapshot() {
