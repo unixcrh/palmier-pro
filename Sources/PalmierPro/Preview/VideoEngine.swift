@@ -36,6 +36,7 @@ final class VideoEngine {
     func teardown() {
         rebuildTask?.cancel()
         rebuildTask = nil
+        compositionCache.removeAll()
         invalidateSeekState()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
@@ -166,16 +167,17 @@ final class VideoEngine {
             return
         }
 
+        let snapshot = inputs.involved[0]
         rebuildTask = Task {
             let result: CompositionResult
             do {
                 result = try await CompositionBuilder.build(
-                    timeline: editor.timeline,
+                    timeline: snapshot,
                     resolveURL: { mediaURLs[$0] },
                     resolveSourceSize: { assetSizes[$0] },
                     resolveTimeline: resolveTimeline,
                     missingMediaRefs: missingMediaRefs,
-                    renderSize: CGSize(width: editor.timeline.width, height: editor.timeline.height)
+                    renderSize: CGSize(width: snapshot.width, height: snapshot.height)
                 )
             } catch {
                 if !Task.isCancelled {
@@ -188,13 +190,19 @@ final class VideoEngine {
             rebuildTask = nil
             guard !Task.isCancelled else { return }
 
-            compositionCache[timelineId] = (inputs, result)
+            if result.offlineMediaRefs.isEmpty && result.unprocessableMediaRefs.isEmpty {
+                compositionCache[timelineId] = (inputs, result)
+            }
             compositionCache = compositionCache.filter { editor.openTimelineIds.contains($0.key) }
             apply(result, resolveTimeline: resolveTimeline, editor: editor)
         }
     }
 
     private var compositionCache: [String: (inputs: RebuildInputs, result: CompositionResult)] = [:]
+
+    func evictComposition(for timelineId: String) {
+        compositionCache.removeValue(forKey: timelineId)
+    }
 
     private func apply(_ result: CompositionResult, resolveTimeline: @escaping @Sendable (String) -> Timeline?, editor: EditorViewModel) {
         trackMappings = result.trackMappings
