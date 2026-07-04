@@ -77,6 +77,7 @@ enum AudioEnhancer {
                 AVNumberOfChannelsKey: count,
                 AVLinearPCMBitDepthKey: 32,
                 AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false,
                 AVLinearPCMIsNonInterleaved: true,
             ]
         ) { buffer in

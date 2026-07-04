@@ -102,7 +102,9 @@ enum ClipRenderer {
             drawTiledImage(image: image, in: thumbRect, clipRect: rect, cornerRadius: cornerRadius, context: context)
         } else if type == .audio, let samples = cache?.samples(for: clip.mediaRef), !samples.isEmpty {
             let audioRect = CGRect(x: contentX, y: contentY, width: contentWidth, height: mainHeight)
-            drawWaveform(samples: samples, clip: clip, type: colorType, in: audioRect, context: context)
+            let mask = markDeadAir ? cache?.deadAirMask(for: clip.mediaRef) : nil
+            drawWaveform(samples: samples, deadAirMask: mask,
+                         clip: clip, type: colorType, in: audioRect, context: context)
         }
 
         if type == .audio {
@@ -206,8 +208,12 @@ enum ClipRenderer {
 
     // MARK: - Waveform
 
+    private static let washColor = NSColor.black.withAlphaComponent(AppTheme.Opacity.strong).cgColor
+    private static var markDeadAir: Bool { UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true }
+
     private static func drawWaveform(
         samples: [Float],
+        deadAirMask: [Bool]?,
         clip: Clip,
         type: ClipType,
         in drawRect: NSRect,
@@ -249,6 +255,13 @@ enum ClipRenderer {
         let needsPerBarVolume = (clip.volumeTrack?.isActive ?? false) || clip.fadeInFrames > 0 || clip.fadeOutFrames > 0
         let staticShift = CGFloat(VolumeScale.dbFromLinear(clip.volume)) / dbRange
 
+        // Dead-air shading maps the mask through the same source fractions as samples.
+        let maskCount = deadAirMask?.count ?? 0
+        let maskStart = max(0, min(maskCount, Int(startFrac * Double(maskCount))))
+        let maskEnd = max(maskStart, min(maskCount, Int(endFrac * Double(maskCount))))
+        let maskVisCount = maskEnd - maskStart
+        var washes: [CGRect] = []
+
         var bars: [CGRect] = []
         bars.reserveCapacity(lastBar - firstBar)
         for i in firstBar..<lastBar {
@@ -272,8 +285,21 @@ enum ClipRenderer {
             let barHeight = max(1, amplitude * (drawHeight - 2))
             let barY = drawRect.maxY - barHeight - 1
             bars.append(CGRect(x: drawRect.minX + CGFloat(i), y: barY, width: 1, height: barHeight))
+
+            if let deadAirMask, maskVisCount > 0 {
+                let m0 = maskStart + i * maskVisCount / barCount
+                let m1 = min(maskEnd, max(m0 + 1, maskStart + (i + 1) * maskVisCount / barCount))
+                if deadAirMask[m0..<m1].contains(true) {
+                    washes.append(CGRect(x: drawRect.minX + CGFloat(i), y: drawRect.minY, width: 1, height: drawRect.height))
+                }
+            }
         }
         context.fill(bars)
+
+        if !washes.isEmpty {
+            context.setFillColor(washColor)
+            context.fill(washes)
+        }
     }
 
     // MARK: - Volume rubber band

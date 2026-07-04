@@ -35,6 +35,7 @@ extension EditorViewModel {
         mediaAssets[i].url = newURL
         denoiseFailed.remove(id)
         denoiseBaked.remove(id)
+        mediaVisualCache.invalidate(id)
         if let j = mediaManifest.entries.firstIndex(where: { $0.id == id }) {
             mediaManifest.entries[j].source = mediaAssets[i].toManifestEntry(projectURL: projectURL).source
         }

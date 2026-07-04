@@ -14,6 +14,14 @@ final class MediaVisualCache {
     /// Cap concurrent waveform extractions to avoid starving playback.
     private static let waveformGate = AsyncSemaphore(value: 2)
 
+    // MARK: - Speech masks
+
+    let speech = SpeechMaskStore()
+
+    init() {
+        speech.onMaskReady = { [weak self] in self?.timelineView?.needsDisplay = true }
+    }
+
     // MARK: - Video thumbnails (sorted by time)
 
     private var videoThumbnails: [String: [(time: Double, image: CGImage)]] = [:]
@@ -35,6 +43,10 @@ final class MediaVisualCache {
         MainActor.assumeIsolated { waveformSamples[mediaRef] }
     }
 
+    nonisolated func deadAirMask(for mediaRef: String) -> [Bool]? {
+        speech.deadAirMask(for: mediaRef, samples: samples(for: mediaRef))
+    }
+
     nonisolated func thumbnails(for mediaRef: String) -> [(time: Double, image: CGImage)]? {
         MainActor.assumeIsolated { videoThumbnails[mediaRef] }
     }
@@ -47,6 +59,7 @@ final class MediaVisualCache {
 
     func generateWaveform(for asset: MediaAsset) {
         guard asset.type == .audio || (asset.type == .video && asset.hasAudio) else { return }
+        speech.generate(for: asset)
         let key = asset.id
         guard waveformSamples[key] == nil, !waveformInFlight.contains(key) else { return }
         waveformInFlight.insert(key)
@@ -63,6 +76,14 @@ final class MediaVisualCache {
                 }
             }
         }
+    }
+
+    /// Clears every cached visual for `mediaRef` so relinked media regenerates.
+    func invalidate(_ mediaRef: String) {
+        waveformSamples.removeValue(forKey: mediaRef)
+        speech.invalidate(mediaRef)
+        videoThumbnails.removeValue(forKey: mediaRef)
+        imageThumbnails.removeValue(forKey: mediaRef)
     }
 
     func generateImageThumbnail(for asset: MediaAsset) {

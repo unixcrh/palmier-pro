@@ -60,6 +60,7 @@ final class EditorViewModel {
     var denoiseInFlight: Set<String> = []
     var denoiseFailed: Set<String> = []
     var denoiseBaked: Set<String> = []
+    var speechAnalyzingCount: Int = 0
 
     // MARK: - Panel focus
 
@@ -193,6 +194,15 @@ final class EditorViewModel {
         didSet { UserDefaults.standard.set(keyframesPanelVisible, forKey: "keyframesPanelVisible") }
     }
 
+    var markDeadAir: Bool = {
+        UserDefaults.standard.object(forKey: "markDeadAir") as? Bool ?? true
+    }() {
+        didSet {
+            UserDefaults.standard.set(markDeadAir, forKey: "markDeadAir")
+            mediaVisualCache.timelineView?.needsDisplay = true
+        }
+    }
+
     // MARK: - Media panel navigation routing
 
     var mediaPanelOrderedItemIds: [String] = []
@@ -225,6 +235,9 @@ final class EditorViewModel {
         )
         agentService.editor = self
         searchIndex.assetsProvider = { [weak self] in self?.mediaAssets ?? [] }
+        mediaVisualCache.speech.onAnalyzingCountChange = { [weak self] count in
+            self?.speechAnalyzingCount = count
+        }
 
         // Re-check media presence when the app regains focus: a user may have
         // deleted/moved backing files in Finder (or ejected a volume) while we
