@@ -55,8 +55,11 @@ final class EditorViewModel {
     var mediaManifest = MediaManifest()
     var generationLog = GenerationLog()
 
+    // MARK: - Denoise bake state (session-scoped, keyed by mediaRef)
+
     var denoiseInFlight: Set<String> = []
     var denoiseFailed: Set<String> = []
+    var denoiseBaked: Set<String> = []
 
     // MARK: - Panel focus
 

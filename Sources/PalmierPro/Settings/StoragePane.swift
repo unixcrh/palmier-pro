@@ -99,7 +99,7 @@ struct StoragePane: View {
         }
     }
 
-    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory)]
+    private nonisolated static let caches = [ImageVideoGenerator.cache, MediaVisualCache.diskCache, DiskCache(directory: TranscriptCache.directory), AudioEnhancer.cache]
 
     private var displayPath: String {
         DiskCache.rootDirectory.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
