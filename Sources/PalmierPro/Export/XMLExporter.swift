@@ -107,6 +107,7 @@ enum XMLExporter {
         private let fps: Int
         private let seqWidth: Int
         private let seqHeight: Int
+        private var curSeqWidth: Int
 
         /// Files already emitted in full; repeat references collapse to `<file id="..."/>`.
         private var emittedFiles: Set<FileKey> = []
@@ -130,6 +131,7 @@ enum XMLExporter {
             self.fps = timeline.fps
             self.seqWidth = timeline.width
             self.seqHeight = timeline.height
+            self.curSeqWidth = timeline.width
             self.startFrameCache = startFrameCache
         }
 
@@ -149,11 +151,14 @@ enum XMLExporter {
         private func sequenceNode(id: String, timeline: Timeline) -> XMLNode {
             let savedAddresses = clipAddresses
             let savedGroups = clipsByLinkGroup
+            let savedSeqWidth = curSeqWidth
             clipAddresses = [:]
             clipsByLinkGroup = [:]
+            curSeqWidth = timeline.width
             defer {
                 clipAddresses = savedAddresses
                 clipsByLinkGroup = savedGroups
+                curSeqWidth = savedSeqWidth
             }
 
             // FCP XML orders video tracks bottom→top; our model stores them top→bottom.
@@ -438,8 +443,9 @@ enum XMLExporter {
         /// Basic Motion: scale, rotation, center — keyframed, or static (defaults omitted).
         private func motionFilter(_ clip: Clip) -> XMLNode? {
             let sourceWidth = resolver.entry(for: clip.mediaRef)?.sourceWidth ?? 0
+            // Scale is relative to the sequence being emitted — a nested child's canvas, not the root's.
             func scalePct(_ width: Double) -> Double {
-                sourceWidth > 0 ? (Double(seqWidth) / Double(sourceWidth)) * width * 100 : width * 100
+                sourceWidth > 0 ? (Double(curSeqWidth) / Double(sourceWidth)) * width * 100 : width * 100
             }
 
             // FCP7 center uses normalized coordinates (0 = center), not pixels.
