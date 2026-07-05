@@ -119,8 +119,8 @@ enum SpeakerIdentity {
     }
 
     static func speechConfirmed(_ turns: [Turn], url: URL, mediaRef: String) async -> [Turn] {
-        guard let analysis = try? await VoiceActivity.analysis(for: url, mediaRef: mediaRef) else { return turns }
-        guard !analysis.segments.isEmpty else { return [] }
+        guard let analysis = try? await VoiceActivity.analysis(for: url, mediaRef: mediaRef),
+              !analysis.segments.isEmpty else { return [] }
         return turns.filter { turn in
             analysis.segments.contains { min(turn.end, $0.end) - max(turn.start, $0.start) >= 0.3 }
         }
