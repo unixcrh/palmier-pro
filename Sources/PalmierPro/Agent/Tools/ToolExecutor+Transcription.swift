@@ -223,6 +223,8 @@ extension ToolExecutor {
             isVideoByURL: isVideoByURL
         )
 
+        let speakerMap = await Self.alignedSpeakerLabels(fragments: fragments, transcripts: transcripts.results)
+
         var words: [TimelineWord] = []
         for frag in fragments.sorted(by: { $0.clip.startFrame < $1.clip.startFrame }) {
             guard let transcript = transcripts.results[frag.url] else { continue }
@@ -236,11 +238,36 @@ extension ToolExecutor {
                     text: row.text,
                     startFrame: row.start,
                     endFrame: row.end,
-                    speaker: row.speaker
+                    speaker: row.speaker.map { speakerMap[frag.clip.mediaRef]?[$0] ?? $0 }
                 ))
             }
         }
         return (words, transcripts.skipped)
+    }
+
+    /// Per-file speaker labels are file-local; align them project-wide by voice fingerprint.
+    private static func alignedSpeakerLabels(
+        fragments: [TranscriptFragment],
+        transcripts: [URL: TranscriptionResult]
+    ) async -> [String: [String: String]] {
+        var refsByURL: [URL: [String]] = [:]
+        var files: [(mediaRef: String, url: URL, turns: [SpeakerIdentity.Turn])] = []
+        for frag in fragments {
+            let isNewURL = refsByURL[frag.url] == nil
+            if refsByURL[frag.url, default: []].contains(frag.clip.mediaRef) == false {
+                refsByURL[frag.url, default: []].append(frag.clip.mediaRef)
+            }
+            guard isNewURL, let transcript = transcripts[frag.url] else { continue }
+            let turns = SpeakerIdentity.turns(from: transcript)
+            if !turns.isEmpty { files.append((frag.clip.mediaRef, frag.url, turns)) }
+        }
+        var map = await SpeakerIdentity.globalLabels(files: files)
+        guard !map.isEmpty, files.allSatisfy({ map[$0.mediaRef] != nil }) else { return [:] }
+        for (url, refs) in refsByURL {
+            guard let primary = refs.first, let entry = map[primary] else { continue }
+            for ref in refs.dropFirst() { map[ref] = entry }
+        }
+        return map
     }
 
     private func transcriptsByURL(
