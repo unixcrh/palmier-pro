@@ -53,7 +53,8 @@ extension ToolExecutor {
         }
         let doc = try await AppState.shared.openProjectAsync(at: url)
         notifyNowEditing(doc)
-        return .ok(Self.jsonString(projectSnapshot(doc, status: "active")) ?? "{}")
+        let result = ToolResult.ok(Self.jsonString(projectSnapshot(doc, status: "active")) ?? "{}")
+        return await shorteningIds(in: result, editor: doc.editorViewModel)
     }
 
     private func newProject(_ args: [String: Any]) async throws -> ToolResult {
@@ -66,7 +67,8 @@ extension ToolExecutor {
             _ = try setProjectSettings(doc.editorViewModel, settingsArgs)
         }
         notifyNowEditing(doc)
-        return .ok(Self.jsonString(projectSnapshot(doc, status: "created")) ?? "{}")
+        let result = ToolResult.ok(Self.jsonString(projectSnapshot(doc, status: "created")) ?? "{}")
+        return await shorteningIds(in: result, editor: doc.editorViewModel)
     }
 
     private func closeProject(_ args: [String: Any]) async throws -> ToolResult {

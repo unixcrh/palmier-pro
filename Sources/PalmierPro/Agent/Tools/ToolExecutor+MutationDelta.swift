@@ -87,14 +87,19 @@ extension ToolExecutor {
         let removedIds = snapshot.placements.keys.filter { after.placements[$0] == nil }.sorted()
         if !removedIds.isEmpty { payload["removedClipIds"] = removedIds }
 
-        let afterTrackIds = Set(after.trackIds)
         let created = after.trackIds.enumerated()
             .filter { !snapshot.trackIds.contains($0.element) }
             .map { i, _ -> [String: Any] in
                 ["index": i, "label": editor.timelineTrackDisplayLabel(at: i), "type": editor.timeline.tracks[i].type.rawValue]
             }
         if !created.isEmpty { payload["createdTracks"] = created }
-        if snapshot.trackIds.contains(where: { !afterTrackIds.contains($0) }) {
+        // Track index changes invalidate index-based calls unless new order is included.
+        let afterTrackIds = Set(after.trackIds)
+        let trackListChanged = snapshot.trackIds.contains { !afterTrackIds.contains($0) }
+            || after.trackIds.enumerated().contains { i, id in
+                snapshot.trackIds.firstIndex(of: id).map { $0 != i } ?? false
+            }
+        if trackListChanged && payload["tracks"] == nil {
             notes.append("Track indices shifted — re-read get_timeline before the next index-based call.")
         }
 
