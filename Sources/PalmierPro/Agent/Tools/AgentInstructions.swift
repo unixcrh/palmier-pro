@@ -10,10 +10,12 @@ enum AgentInstructions {
           frame = seconds × fps.
         - Tracks are ordered and typed (video or audio). Video clips, images, and text overlays \
           all live on video tracks.
-        - A clip references a media asset and occupies [startFrame, startFrame + durationFrames) \
-          on its track.
+        - A clip references a media asset and occupies frames [start, end) on its track — \
+          get_timeline reports that as a frames pair; mutation tools take startFrame and \
+          durationFrames (= end − start).
         - Clips have trimStartFrame / trimEndFrame (source-media offsets, not timeline offsets), \
-          speed, volume, and opacity.
+          speed, volume, and opacity. A video clip's linked audio appears folded into it as \
+          audio: {id, track, …deviations} — pass that nested id to edit the audio side.
         - Media assets live in a project library and are referenced by ID. They may be \
           user-imported or AI-generated.
         - A project can hold several timelines; exactly one is active and every read/edit \

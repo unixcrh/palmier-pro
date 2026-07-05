@@ -261,9 +261,9 @@ struct ToolExecutorReadOnlyTests {
         let clip = (track?["clips"] as? [[String: Any]])?.first
         #expect(clip?["id"] as? String == "c1")
         #expect(clip?["mediaRef"] as? String == "media-1")
-        #expect(clip?["startFrame"] as? Int == 0)
-        #expect(clip?["durationFrames"] as? Int == 50)
-        #expect(clip?["endFrame"] as? Int == 50)
+        #expect(clip?["frames"] as? [Int] == [0, 50])
+        #expect(clip?["startFrame"] == nil)
+        #expect(clip?["durationFrames"] == nil)
         for defaulted in [
             "mediaType", "sourceClipType", "speed", "volume", "opacity",
             "trimStartFrame", "trimEndFrame", "fadeInFrames", "fadeOutFrames",
@@ -408,7 +408,7 @@ struct ToolExecutorReadOnlyTests {
 
         let json = try await h.runOK("get_timeline") as? [String: Any]
         #expect(Self.firstCaptionGroup(json)?["clipCount"] as? Int == 3)
-        #expect((Self.firstTrack(json)?["clips"] as? [[String: Any]])?.isEmpty == true)
+        #expect(Self.firstTrack(json)?["clips"] == nil)
     }
 
     @Test func getTimelineRejectsInvalidWindow() async {
@@ -1398,6 +1398,52 @@ struct ToolExecutorClipTests {
         // Track wrappers are removed.
         #expect(clip?["volumeTrack"] == nil)
         #expect(clip?["positionTrack"] == nil)
+    }
+
+    @Test func getTimelineCollapsesConstantAndIdentityKeyframes() async throws {
+        let (h, clipId) = await setupClipForKeyframes()
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "crop",
+            "keyframes": [[0, 0, 0, 0, 0.313], [36, 0, 0, 0, 0.313]],
+        ])
+        _ = await h.runRaw("set_keyframes", args: [
+            "clipId": clipId, "property": "position",
+            "keyframes": [[0, 0, 0]],
+        ])
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let clip = ((json?["tracks"] as? [[String: Any]]) ?? [])
+            .flatMap { ($0["clips"] as? [[String: Any]]) ?? [] }
+            .first { ($0["id"] as? String).map { clipId.hasPrefix($0) } == true }
+        // Constant crop reads as the static field; identity position vanishes.
+        #expect(clip?["keyframes"] == nil)
+        #expect((clip?["crop"] as? [String: Any])?["left"] as? Double == 0.313)
+    }
+
+    @Test func getTimelineFoldsLinkedAudioIntoVideoClip() async throws {
+        let h = ToolHarness()
+        h.addAsset(id: "av-src", duration: 10, hasAudio: true)
+        _ = await h.runRaw("add_clips", args: ["entries": [
+            ["mediaRef": "av-src", "startFrame": 0, "durationFrames": 60],
+        ]])
+        let audioClip = h.editor.timeline.tracks.first { $0.type == .audio }?.clips.first
+        let audioId = try #require(audioClip?.id)
+        _ = await h.runRaw("set_clip_properties", args: ["clipIds": [audioId], "volume": 0.0])
+
+        let json = try await h.runOK("get_timeline") as? [String: Any]
+        let tracks = (json?["tracks"] as? [[String: Any]]) ?? []
+        let videoTrack = tracks.first { $0["type"] as? String == "video" }
+        let audioTrack = tracks.first { $0["type"] as? String == "audio" }
+
+        let video = (videoTrack?["clips"] as? [[String: Any]])?.first
+        let audio = video?["audio"] as? [String: Any]
+        #expect((audio?["id"] as? String).map { audioId.hasPrefix($0) } == true)
+        #expect(audio?["track"] as? Int == audioTrack?["index"] as? Int)
+        #expect(audio?["volume"] as? Double == 0)
+        #expect(video?["linkGroupId"] == nil)
+
+        // The partner is not repeated on its own track; a count stands in.
+        #expect(audioTrack?["clips"] == nil)
+        #expect(audioTrack?["linkedClips"] as? Int == 1)
     }
 }
 

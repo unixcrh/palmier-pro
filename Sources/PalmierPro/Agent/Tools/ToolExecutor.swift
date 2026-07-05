@@ -185,7 +185,7 @@ final class ToolExecutor {
     }
 
     nonisolated static func jsonString(_ obj: Any) -> String? {
-        guard let data = try? JSONSerialization.data(withJSONObject: obj) else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
