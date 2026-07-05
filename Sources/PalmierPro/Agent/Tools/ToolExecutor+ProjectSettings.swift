@@ -83,16 +83,21 @@ extension ToolExecutor {
         editor.applyTimelineSettings(fps: newFPS, width: newWidth, height: newHeight)
         editor.undoManager?.setActionName("Set Project Settings (Agent)")
 
-        var changes: [String] = []
-        if newFPS != prevFPS { changes.append("fps \(prevFPS) → \(newFPS)") }
-        if newWidth != prevWidth || newHeight != prevHeight {
-            changes.append("resolution \(prevWidth)×\(prevHeight) → \(newWidth)×\(newHeight)")
-        }
+        var changed: [String] = []
+        if newFPS != prevFPS { changed.append("fps") }
+        if newWidth != prevWidth || newHeight != prevHeight { changed.append("resolution") }
 
-        if changes.isEmpty {
-            return .ok("No change — settings already match: \(newWidth)×\(newHeight) @ \(newFPS)fps")
+        var payload: [String: Any] = [
+            "fps": newFPS,
+            "resolution": "\(newWidth)x\(newHeight)",
+            "changed": changed,
+        ]
+        if changed.isEmpty {
+            payload["note"] = "Settings already matched."
+        } else if changed.contains("fps") {
+            payload["note"] = "Clip frames rescaled to \(newFPS)fps — re-read get_timeline before frame-based edits."
         }
-        return .ok("Updated: \(changes.joined(separator: ", ")). Now \(newWidth)×\(newHeight) @ \(newFPS)fps.")
+        return .ok(Self.jsonString(payload) ?? "{}")
     }
 
     /// Syncs timeline resolution with the first clip if needed; returns a note if changed, nil otherwise.

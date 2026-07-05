@@ -1419,6 +1419,36 @@ struct ToolExecutorClipTests {
         #expect((clip?["crop"] as? [String: Any])?["left"] as? Double == 0.313)
     }
 
+    @Test func setProjectSettingsReturnsChangedFieldsAsJSON() async throws {
+        let h = ToolHarness()
+        let json = try await h.runOK("set_project_settings", args: ["fps": 60]) as? [String: Any]
+        #expect(json?["fps"] as? Int == 60)
+        #expect(json?["changed"] as? [String] == ["fps"])
+        #expect((json?["note"] as? String)?.contains("re-read") == true)
+
+        let noop = try await h.runOK("set_project_settings", args: ["fps": 60]) as? [String: Any]
+        #expect(noop?["changed"] as? [String] == [])
+        #expect(noop?["note"] as? String == "Settings already matched.")
+    }
+
+    @Test func visibleClipsListsTopDownAndCollapsesCaptionGroups() async throws {
+        var caption = Fixtures.clip(id: "cap-0", mediaType: .text, start: 0, duration: 90)
+        caption.captionGroupId = "g1"
+        var hiddenTrack = Fixtures.videoTrack(clips: [Fixtures.clip(id: "hidden", start: 0, duration: 90)])
+        hiddenTrack.hidden = true
+        let timeline = Fixtures.timeline(tracks: [
+            Fixtures.videoTrack(clips: [caption]),
+            hiddenTrack,
+            Fixtures.videoTrack(clips: [
+                Fixtures.clip(id: "main", start: 0, duration: 60),
+                Fixtures.clip(id: "later", start: 60, duration: 30),
+            ]),
+            Fixtures.audioTrack(clips: [Fixtures.clip(id: "aud", mediaType: .audio, start: 0, duration: 90)]),
+        ])
+        #expect(ToolExecutor.visibleClips(at: 30, in: timeline) == ["g1", "main"])
+        #expect(ToolExecutor.visibleClips(at: 70, in: timeline) == ["g1", "later"])
+    }
+
     @Test func getTimelineFoldsLinkedAudioIntoVideoClip() async throws {
         let h = ToolHarness()
         h.addAsset(id: "av-src", duration: 10, hasAudio: true)
