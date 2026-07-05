@@ -91,6 +91,26 @@ final class AppState {
         project.showWindows()
     }
 
+    // Save and close project; switch to next open or show Home.
+    func closeProject(_ project: VideoProject) async {
+        if let url = project.fileURL { ProjectRegistry.shared.register(url) }
+        if project.isDocumentEdited {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                project.autosave(withImplicitCancellability: false) { _ in cont.resume() }
+            }
+        }
+        let wasActive = activeProject === project
+        project.close()
+        if wasActive {
+            activeProject = nil
+            if let next = openProjects.first {
+                showEditor(for: next)
+            } else {
+                HomeWindowController.shared.showWindow(nil)
+            }
+        }
+    }
+
     func revealGeneratedAssetFromNotification(assetId: String?, projectURL: URL?) {
         NSApp.activate(ignoringOtherApps: true)
         guard let project = notificationTargetProject(assetId: assetId, projectURL: projectURL) else {

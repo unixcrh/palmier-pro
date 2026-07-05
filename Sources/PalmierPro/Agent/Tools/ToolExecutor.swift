@@ -28,7 +28,7 @@ final class ToolExecutor {
 
         // project tools act on AppState before editor is available
         switch tool {
-        case .getProjects, .openProject, .newProject:
+        case .getProjects, .openProject, .newProject, .closeProject:
             return await runProjectTool(tool, args)
         default:
             break
@@ -121,7 +121,7 @@ final class ToolExecutor {
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
         case .readSkill:     return readSkill(args)
-        case .getProjects, .openProject, .newProject:
+        case .getProjects, .openProject, .newProject, .closeProject:
             return await runProjectTool(tool, args)
         }
     }

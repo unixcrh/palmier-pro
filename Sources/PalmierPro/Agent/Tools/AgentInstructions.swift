@@ -222,6 +222,8 @@ enum AgentInstructions {
           timelines, mediaCount) that orients you before get_timeline.
         - new_project: create and open a fresh project. Give it a name; it's created in the \
           Palmier Pro folder. Fails if that name already exists there.
+        - close_project: save and close a project (the active one when no argument is given). \
+          Close projects you opened for a lookup once you're done with them.
         Only one project is active at a time — opening or creating one switches the active \
         project, and the user sees the window change.
         """

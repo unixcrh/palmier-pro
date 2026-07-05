@@ -7,10 +7,11 @@ extension ToolExecutor {
     func runProjectTool(_ tool: ToolName, _ args: [String: Any]) async -> ToolResult {
         do {
             switch tool {
-            case .getProjects: return try getProjects()
-            case .openProject: return try await openProject(args)
-            case .newProject:  return try await newProject(args)
-            default:           return .error("Not a project tool: \(tool.rawValue)")
+            case .getProjects:  return try getProjects()
+            case .openProject:  return try await openProject(args)
+            case .newProject:   return try await newProject(args)
+            case .closeProject: return try await closeProject(args)
+            default:            return .error("Not a project tool: \(tool.rawValue)")
             }
         } catch let err as ToolError {
             return .error(err.message)
@@ -65,6 +66,38 @@ extension ToolExecutor {
         }
         notifyNowEditing(doc)
         return .ok(Self.jsonString(projectSnapshot(doc, status: "created")) ?? "{}")
+    }
+
+    private func closeProject(_ args: [String: Any]) async throws -> ToolResult {
+        try validateUnknownKeys(args, allowed: ["name", "id", "path"], path: "close_project")
+        let target: VideoProject
+        if args.string("name") != nil || args.string("id") != nil || args.string("path") != nil {
+            let url = try resolveProjectURL(args).standardizedFileURL
+            guard let doc = AppState.shared.openProjects.first(where: {
+                $0.fileURL?.standardizedFileURL == url
+            }) else {
+                throw ToolError("Project at \(url.path) isn't open.")
+            }
+            target = doc
+        } else if let active = AppState.shared.activeProject {
+            target = active
+        } else {
+            throw ToolError("No project is open.")
+        }
+        let name = target.displayName ?? Project.defaultProjectName
+        await AppState.shared.closeProject(target)
+        var payload: [String: Any] = [
+            "status": "closed",
+            "name": name,
+            "openCount": AppState.shared.openProjects.count,
+        ]
+        if let nowActive = AppState.shared.activeProject {
+            payload["active"] = [
+                "name": nowActive.displayName ?? Project.defaultProjectName,
+                "path": nowActive.fileURL?.path ?? "",
+            ]
+        }
+        return .ok(Self.jsonString(payload) ?? "{}")
     }
 
     private func projectSnapshot(_ doc: VideoProject, status: String) -> [String: Any] {

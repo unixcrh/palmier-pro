@@ -6,6 +6,7 @@ enum ToolName: String, CaseIterable, Sendable {
     case getProjects = "get_projects"
     case openProject = "open_project"
     case newProject = "new_project"
+    case closeProject = "close_project"
 
     // Timelines
     case getTimeline = "get_timeline"
@@ -927,8 +928,19 @@ enum ToolDefinitions {
         )
     )
 
+    static let closeProject = AgentTool(
+        name: .closeProject,
+        description: "Save and close an open project. Omit all arguments to close the active project; or identify one by name, id (from get_projects), or path. Unsaved changes are saved first. When the active project closes, the next open project becomes active (returned as `active`) — with none left, the Home window shows and editing tools need open_project/new_project again.",
+        inputSchema: objectSchema(
+            properties: [
+                "name": ["type": "string", "description": "Project name, matched case-insensitively. Omit everything to close the active project."],
+                "id": ["type": "string", "description": "Project id from get_projects."],
+                "path": ["type": "string", "description": "Filesystem path to a .palmier package."],
+            ]
+        )
+    )
 
-    static var mcpServer: [AgentTool] { all + [getProjects, openProject, newProject] }
+    static var mcpServer: [AgentTool] { all + [getProjects, openProject, newProject, closeProject] }
     static var inAppAgent: [AgentTool] { all + [readSkill] }
 
     private static func textBoxTransformProperties() -> [String: [String: Any]] {
