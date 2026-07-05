@@ -11,7 +11,14 @@ fileprivate struct SetProjectSettingsInput: DecodableToolArgs {
 
 extension ToolExecutor {
 
-    func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+    struct ValidatedProjectSettings {
+        fileprivate let input: SetProjectSettingsInput
+        let aspectPreset: AspectPreset?
+        let qualityPreset: QualityPreset?
+    }
+
+    @discardableResult
+    func validateProjectSettings(_ args: [String: Any]) throws -> ValidatedProjectSettings {
         let input: SetProjectSettingsInput = try decodeToolArgs(args, path: "set_project_settings")
 
         guard input.fps != nil || input.width != nil || input.height != nil
@@ -48,6 +55,14 @@ extension ToolExecutor {
                 throw ToolError("Unknown quality '\(q)'. Use one of: 720p, 1080p, 2K, 4K")
             }
         }
+        return ValidatedProjectSettings(input: input, aspectPreset: aspectPreset, qualityPreset: qualityPreset)
+    }
+
+    func setProjectSettings(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let settings = try validateProjectSettings(args)
+        let input = settings.input
+        let aspectPreset = settings.aspectPreset
+        let qualityPreset = settings.qualityPreset
 
         let newFPS = input.fps ?? editor.timeline.fps
         let newWidth: Int

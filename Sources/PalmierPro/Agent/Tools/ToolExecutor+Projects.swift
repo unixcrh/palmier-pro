@@ -59,8 +59,9 @@ extension ToolExecutor {
     private func newProject(_ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: ["name", "fps", "aspectRatio", "quality"], path: "new_project")
         let name = args.string("name") ?? Project.defaultProjectName
-        let doc = try await AppState.shared.createProject(named: name)
         let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
+        if !settingsArgs.isEmpty { try validateProjectSettings(settingsArgs) }
+        let doc = try await AppState.shared.createProject(named: name)
         if !settingsArgs.isEmpty {
             _ = try setProjectSettings(doc.editorViewModel, settingsArgs)
         }
@@ -85,7 +86,11 @@ extension ToolExecutor {
             throw ToolError("No project is open.")
         }
         let name = target.displayName ?? Project.defaultProjectName
-        await AppState.shared.closeProject(target)
+        do {
+            try await AppState.shared.closeProject(target)
+        } catch {
+            throw ToolError("Couldn't save '\(name)' — project left open. \(error.localizedDescription)")
+        }
         var payload: [String: Any] = [
             "status": "closed",
             "name": name,
@@ -109,12 +114,8 @@ extension ToolExecutor {
             "fps": editor.timeline.fps,
             "resolution": "\(editor.timeline.width)x\(editor.timeline.height)",
             "mediaCount": editor.mediaAssets.count,
-            "canGenerate": AccountService.shared.isSignedIn && AccountService.shared.hasCredits,
-            "timelines": editor.timelines.map { t -> [String: Any] in
-                var e: [String: Any] = ["timelineId": t.id, "name": t.name]
-                if t.id == editor.activeTimelineId { e["active"] = true }
-                return e
-            },
+            "canGenerate": Self.canGenerate,
+            "timelines": timelineEntries(editor),
             "openCount": AppState.shared.openProjects.count,
         ]
     }
