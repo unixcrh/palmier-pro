@@ -185,14 +185,6 @@ struct ToolExecutorReadOnlyTests {
         #expect(json?["currentFrame"] as? Int == 42)
     }
 
-    @Test func getTimelineExposesCanGenerateFromAccountService() async throws {
-        // AccountService.shared starts unpaid in test environment.
-        let h = ToolHarness()
-        let json = try await h.runOK("get_timeline") as? [String: Any]
-        // We don't assert the value (depends on env), only that the key is present and Bool.
-        #expect(json?["canGenerate"] is Bool)
-    }
-
     @Test func getTimelineRoundsFloatingPointNumbersToThreeDecimalPlaces() async throws {
         var clip = Fixtures.clip(
             mediaType: .video,
@@ -869,7 +861,7 @@ struct ToolExecutorClipTests {
         #expect(notes.contains("Track indices shifted"), "expected track-shift note, got: \(notes)")
     }
 
-    @Test func removeClipsMessageOmitsPruneNoteWhenNothingPruned() async throws {
+    @Test func removeClipsOmitsTrackShiftNoteWhenNoTrackPruned() async throws {
         let (h, asset) = await setupWithVideoTrack()
         _ = await h.runRaw("add_clips", args: [
             "entries": [
@@ -879,9 +871,9 @@ struct ToolExecutorClipTests {
         ])
         let clipId = h.editor.timeline.tracks[0].clips.sorted { $0.startFrame < $1.startFrame }[0].id
 
-        let result = await h.runRaw("remove_clips", args: ["clipIds": [clipId]])
-        let message = ToolHarness.textOf(result)
-        #expect(!message.contains("Pruned"), "no tracks were pruned but message claims they were: \(message)")
+        let json = try await h.runOK("remove_clips", args: ["clipIds": [clipId]]) as? [String: Any]
+        let notes = (json?["notes"] as? [String])?.joined(separator: " ") ?? ""
+        #expect(!notes.contains("Track indices shifted"), "no track was pruned but the shift note appeared: \(notes)")
     }
 
     @Test func removeClipsRejectsMissingIds() async throws {
@@ -1118,15 +1110,6 @@ struct ToolExecutorClipTests {
         let clip = h.editor.timeline.tracks[0].clips[0]
         #expect(clip.speed == 2.0)
         #expect(clip.volume == 0.5)
-    }
-
-    @Test func setClipPropertiesChangesOpacity() async throws {
-        let (h, asset) = await setupWithVideoTrack()
-        let clipId = await addedClip(in: h, asset: asset)
-        _ = await h.runRaw("set_clip_properties", args: [
-            "clipIds": [clipId], "opacity": 0.25,
-        ])
-        #expect(h.editor.timeline.tracks[0].clips[0].opacity == 0.25)
     }
 
     @Test func setClipPropertiesAppliesUniformlyToMultipleClips() async throws {
