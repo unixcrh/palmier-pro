@@ -284,7 +284,7 @@ extension ToolExecutor {
     private static func captionGroup(
         gid: String, members: [[String: Any]], window: Range<Int>?, detail: Bool
     ) -> (group: [String: Any], deviants: [[String: Any]]) {
-        let rowKeys: Set<String> = ["id", "frames", "textContent", "captionGroupId"]
+        let rowKeys: Set<String> = ["id", "frames", "textContent", "captionGroupId", "wordTimings"]
         var counts: [String: Int] = [:]
         var modalKey = ""
         var shared: [String: Any] = [:]

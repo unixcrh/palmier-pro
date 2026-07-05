@@ -606,7 +606,7 @@ enum ToolDefinitions {
                             "properties": mergedProperties([
                                 "trackIndex": ["type": "integer", "description": "Existing non-audio track. Omit on all entries to create a new top track."],
                                 "startFrame": ["type": "integer", "description": "Timeline start frame."],
-                                "durationFrames": ["type": "integer", "description": "Duration in frames."],
+                                "endFrame": ["type": "integer", "description": "Occupy timeline frames [startFrame, endFrame) — copy a clip's frames pair to title exactly that span."],
                                 "content": ["type": "string", "description": "Text. Supports \\n."],
                                 "transform": [
                                     "type": "object",
@@ -617,7 +617,7 @@ enum ToolDefinitions {
                                 "animation": ["type": "string", "enum": TextAnimation.Preset.agentValues, "description": "Animation preset; off clears."],
                                 "highlightColor": ["type": "string", "description": "Active-word hex."],
                             ]),
-                            "required": ["startFrame", "durationFrames", "content"],
+                            "required": ["startFrame", "endFrame", "content"],
                         ],
                     ],
                 ],
@@ -650,13 +650,18 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .addCaptions,
-            description: "Transcribes spoken audio and creates styled caption text clips. Omit clipIds by default; this captions the timeline's main spoken track and is the right path for ordinary requests like captioning the timeline, edit, video, or track. The app uses cloud for signed-in users with credits, otherwise local. Cloud auto-detects language. Only pass clipIds when the user explicitly asks to caption one specific clip, selected clips, or a narrow subset. Per-word animations are timed from transcript.",
+            description: "Transcribes the timeline's spoken audio and creates styled caption text clips on their own track — no targeting needed; it finds the spoken content itself. The app uses cloud for signed-in users with credits, otherwise local. Cloud auto-detects language. Per-word animations are timed from the transcript. Returns the caption group summary (captionGroupId, clipCount, frameRange, shared style, textPreview) — restyle it later with update_text and that captionGroupId.",
             inputSchema: objectSchema(
                 properties: mergedProperties([
-                    "clipIds": ["type": "array", "items": ["type": "string"], "description": "Optional override. Omit for normal caption requests, including full timeline/track captioning. Only pass for an explicitly requested clip subset."],
                     "language": ["type": "string", "description": "BCP-47 speech language. Applies to local only; cloud auto-detects."],
-                    "centerX": ["type": "number", "description": "0-1 horizontal center."],
-                    "centerY": ["type": "number", "description": "0-1 vertical center."],
+                    "transform": [
+                        "type": "object",
+                        "description": "Caption box position; size is auto-fit per caption.",
+                        "properties": [
+                            "centerX": ["type": "number", "description": "0-1 horizontal center."],
+                            "centerY": ["type": "number", "description": "0-1 vertical center."],
+                        ],
+                    ],
                     "textCase": ["type": "string", "enum": ["auto", "upper", "lower"], "description": "Letter case."],
                     "censorProfanity": ["type": "boolean", "description": "Mask profanity."],
                     "maxWords": ["type": "integer", "description": "Max words per caption."],

@@ -1571,7 +1571,7 @@ struct ToolExecutorTextFolderTests {
         let result = await h.runRaw("add_texts", args: [
             "entries": [[
                 "startFrame": 0,
-                "durationFrames": 90,
+                "endFrame": 90,
                 "content": "Hello",
             ]]
         ])
@@ -1591,7 +1591,7 @@ struct ToolExecutorTextFolderTests {
             "entries": [[
                 "trackIndex": 0,
                 "startFrame": 30,
-                "durationFrames": 60,
+                "endFrame": 90,
                 "content": "Caption",
                 "fontSize": 48,
             ]]
@@ -1609,7 +1609,7 @@ struct ToolExecutorTextFolderTests {
             "entries": [[
                 "trackIndex": 0,
                 "startFrame": 0,
-                "durationFrames": 60,
+                "endFrame": 60,
                 "content": "Styled",
                 "fontName": "Georgia",
                 "fontSize": 54,
@@ -1643,7 +1643,7 @@ struct ToolExecutorTextFolderTests {
             "entries": [[
                 "trackIndex": 0,
                 "startFrame": 0,
-                "durationFrames": 30,
+                "endFrame": 30,
                 "content": "Subtitle",
             ]]
         ])
@@ -1656,8 +1656,8 @@ struct ToolExecutorTextFolderTests {
         _ = h.editor.insertTrack(at: 0, type: .video)
         let result = await h.runRaw("add_texts", args: [
             "entries": [
-                ["trackIndex": 0, "startFrame": 0, "durationFrames": 30, "content": "A"],
-                ["startFrame": 60, "durationFrames": 30, "content": "B"], // missing trackIndex
+                ["trackIndex": 0, "startFrame": 0, "endFrame": 30, "content": "A"],
+                ["startFrame": 60, "endFrame": 90, "content": "B"], // missing trackIndex
             ]
         ])
         #expect(result.isError)
@@ -1671,7 +1671,7 @@ struct ToolExecutorTextFolderTests {
             "entries": [[
                 "trackIndex": 0,
                 "startFrame": 0,
-                "durationFrames": 0,
+                "endFrame": 0,
                 "content": "x",
             ]]
         ])
@@ -1947,6 +1947,27 @@ struct SetClipPropertiesTests {
         #expect(updated.transform.rotation == 45.0)
     }
 
+    @Test func updateTextCaptionGroupCollapsesToSummary() async {
+        var clips: [Clip] = []
+        for i in 0..<3 {
+            var c = Fixtures.clip(id: "cap-\(i)", mediaRef: "text", mediaType: .text, start: i * 30, duration: 30)
+            c.captionGroupId = "g1"
+            c.textContent = "word\(i)"
+            clips.append(c)
+        }
+        let h = ToolHarness(timeline: Fixtures.timeline(tracks: [Fixtures.videoTrack(clips: clips)]))
+
+        let result = await h.runRaw("update_text", args: ["captionGroupId": "g1", "color": "#FF0000"])
+        #expect(result.isError == false, "\(ToolHarness.textOf(result))")
+        let json = (try? JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8))) as? [String: Any]
+        // ≥3 caption members collapse to the group summary, not an enumeration.
+        #expect(json?["clips"] == nil)
+        let group = (json?["captionGroups"] as? [[String: Any]])?.first
+        #expect(group?["captionGroupId"] as? String == "g1")
+        #expect(group?["clipCount"] as? Int == 3)
+        #expect(group?["textPreview"] as? String == "word0 … word2")
+    }
+
     @Test func updateTextCaptionGroupAcceptsRichTextStyleFields() async {
         var a = Fixtures.clip(id: "cap-a", mediaRef: "text", mediaType: .text, start: 0, duration: 30)
         var b = Fixtures.clip(id: "cap-b", mediaRef: "text", mediaType: .text, start: 30, duration: 30)
@@ -1966,7 +1987,8 @@ struct SetClipPropertiesTests {
         ])
 
         #expect(result.isError == false, "\(ToolHarness.textOf(result))")
-        #expect(ToolHarness.textOf(result) == "Updated 2 text clips.")
+        let json = (try? JSONSerialization.jsonObject(with: Data(ToolHarness.textOf(result).utf8))) as? [String: Any]
+        #expect((json?["clips"] as? [[String: Any]])?.count == 2)
         let clips = h.editor.timeline.tracks[0].clips
         for clip in clips {
             #expect(clip.textStyle?.alignment == .left)

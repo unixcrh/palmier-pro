@@ -89,7 +89,8 @@ enum AgentInstructions {
           • update_text: change text/caption content, font, color, outline, background, \
             text animation, or text-box transform. Pass captionGroupId to restyle a whole \
             caption track at once.
-          • add_captions: if adding captions for the entire timeline, omit clipIds.
+          • add_captions: captions the timeline's spoken audio — no targeting needed; \
+            restyle afterwards with update_text and the returned captionGroupId.
           • set_keyframes: replace the keyframe track for one (clipId, property) pair. Empty \
             array clears. Frames are clip-relative. Not for static layout — use apply_layout.
           • split_clips: pass one or more cut points (each atFrame strictly inside its clip) in \

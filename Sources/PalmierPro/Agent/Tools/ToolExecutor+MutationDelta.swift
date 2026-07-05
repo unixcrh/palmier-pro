@@ -74,6 +74,8 @@ extension ToolExecutor {
         shifts.sort { (($0["track"] as? Int) ?? 0, ($0["fromFrame"] as? Int) ?? 0) < (($1["track"] as? Int) ?? 0, ($1["fromFrame"] as? Int) ?? 0) }
 
         var payload = extra
+        let captionGroups = collapseCaptionGroups(editor, changed: &changed)
+        if !captionGroups.isEmpty { payload["captionGroups"] = captionGroups }
         var clips = readShapedClips(editor, ids: changed)
         if clips.count > Self.mutationClipLimit {
             payload["clipsNote"] = "Showing \(Self.mutationClipLimit) of \(clips.count) changed clips — re-read get_timeline for the rest."
@@ -98,6 +100,34 @@ extension ToolExecutor {
 
         if !notes.isEmpty { payload["notes"] = notes }
         return .ok(Self.jsonString(roundJSONFloatingPointNumbers(payload, toPlaces: 3)) ?? "{}")
+    }
+
+    /// If 3+ changed clips share a captionGroupId, collapse to one group summary in get_timeline.
+    private func collapseCaptionGroups(_ editor: EditorViewModel, changed: inout Set<String>) -> [[String: Any]] {
+        var gidByMember: [String: String] = [:]
+        var counts: [String: Int] = [:]
+        for track in editor.timeline.tracks {
+            for clip in track.clips where changed.contains(clip.id) {
+                guard let gid = clip.captionGroupId else { continue }
+                gidByMember[clip.id] = gid
+                counts[gid, default: 0] += 1
+            }
+        }
+        let collapsedGids = Set(counts.filter { $0.value >= Self.shiftGroupMinimum }.keys)
+        guard !collapsedGids.isEmpty else { return [] }
+        changed = changed.filter { gidByMember[$0].map { !collapsedGids.contains($0) } ?? true }
+
+        guard let dict = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(editor.timeline)) as? [String: Any],
+              let rawTracks = dict["tracks"] as? [[String: Any]] else { return [] }
+        var out: [[String: Any]] = []
+        for track in Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: false) {
+            for var group in track["captionGroups"] as? [[String: Any]] ?? [] {
+                guard let gid = group["captionGroupId"] as? String, collapsedGids.contains(gid) else { continue }
+                group["track"] = track["index"] ?? 0
+                out.append(group)
+            }
+        }
+        return out
     }
 
     /// Returns clips in get_timeline shape with track index, folding audio and captions.

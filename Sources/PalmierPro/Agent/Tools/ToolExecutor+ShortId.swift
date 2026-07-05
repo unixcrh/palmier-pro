@@ -109,6 +109,7 @@ extension ToolExecutor {
 
     private static func expandOne(_ ref: String, universe: Set<String>) throws -> String {
         if universe.contains(ref) { return ref }
+        guard ref.count >= idPrefixFloor else { return ref }
         let matches = universe.filter { $0.hasPrefix(ref) }
         if matches.count == 1 { return matches.first! }
         if matches.count > 1 {
