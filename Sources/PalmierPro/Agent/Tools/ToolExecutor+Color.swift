@@ -121,10 +121,20 @@ extension ToolExecutor {
             }
         }
         // LUT file I/O up front so it can throw before mutating.
+        func storeLUT(_ path: String) throws -> String {
+            do { return try LUTLoader.store(path: path, projectId: editor.projectId) }
+            catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
+        }
         var lutDestPath: String?
         if let path = input.lut?.path, !path.isEmpty {
-            do { lutDestPath = try LUTLoader.store(path: path, projectId: editor.projectId) }
-            catch let e as LUTStoreError { throw ToolError(e.errorDescription ?? "Invalid LUT.") }
+            lutDestPath = try storeLUT(path)
+        }
+        var pastedStack: [Effect]?
+        if let colorDict {
+            var pasted = GradeState(colorDict: colorDict)
+            if let path = pasted.lutPath, !path.isEmpty { pasted.lutPath = try storeLUT(path) }
+            pasted.lutIntensity = pasted.lutIntensity.map { min(1, max(0, $0)) }
+            pastedStack = pasted.buildStack()
         }
         let reset = input.reset ?? false
         let snapshot = timelineSnapshot(editor)
@@ -132,8 +142,8 @@ extension ToolExecutor {
         withUndoGroup(editor, actionName: actionName) {
             editor.mutateClips(ids: Set(input.clipIds), actionName: actionName) { clip in
                 let nonColor = (clip.effects ?? []).filter { !$0.type.hasPrefix("color.") }
-                if let colorDict {
-                    clip.effects = nonColor + GradeState(colorDict: colorDict).buildStack()
+                if let pastedStack {
+                    clip.effects = nonColor + pastedStack
                     return
                 }
                 let disabledColor = reset ? []
