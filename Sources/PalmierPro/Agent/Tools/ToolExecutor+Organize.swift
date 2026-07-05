@@ -53,17 +53,6 @@ extension ToolExecutor {
         return fallbackReferences.last?.folderId
     }
 
-    func folderIdsIncludingDescendants(_ ids: [String], editor: EditorViewModel) -> Set<String> {
-        var all = Set(ids)
-        var queue = ids
-        while let id = queue.popLast() {
-            for child in editor.folders where child.parentFolderId == id {
-                if all.insert(child.id).inserted { queue.append(child.id) }
-            }
-        }
-        return all
-    }
-
     private func resolveFolderSegments(_ path: String, editor: EditorViewModel) throws -> String? {
         var parent: String?
         for segment in try folderSegments(path) {
@@ -132,16 +121,28 @@ extension ToolExecutor {
             throw ToolError("Nothing to do — pass at least one of createFolders, moves, renames, deletes.")
         }
 
-        let deletedTimelineIds = deletes.compactMap { if case .timeline(let id) = $0 { id } else { nil } }
-        guard deletedTimelineIds.count < editor.timelines.count else {
+        var assetIds = Set<String>(), timelineIds = Set<String>(), folderIds = Set<String>()
+        for item in deletes {
+            switch item {
+            case .asset(let id): assetIds.insert(id)
+            case .timeline(let id): timelineIds.insert(id)
+            case .folder(let id, _): folderIds.insert(id)
+            }
+        }
+        guard timelineIds.count < editor.timelines.count else {
             throw ToolError("Can't delete every timeline — the project needs at least one.")
+        }
+        // Validate every folder path (syntax + ambiguity) before mutating anything.
+        for path in createPaths + moves.compactMap(\.intoPath) {
+            _ = try resolveFolderSegments(path, editor: editor)
         }
 
         var createdFolders: [String] = []
         var movedCount = 0
         var clipsRemoved = 0
-        var deletedAssets = 0, deletedFolders = 0
         var warnings: [String] = []
+        let snapshot = timelineSnapshot(editor)
+        let activeBefore = editor.activeTimelineId
 
         try withUndoGroup(editor, actionName: "Organize Media") {
             for path in createPaths {
@@ -178,20 +179,16 @@ extension ToolExecutor {
             }
 
             // Assets and folders first so the clip-count diff excludes deleted timelines' own clips.
-            let assetIds = deletes.compactMap { if case .asset(let id) = $0 { id } else { nil } }
-            let folderIds = deletes.compactMap { if case .folder(let id, _) = $0 { id } else { nil } }
             let clipsBefore = totalClipCount(editor)
-            if !assetIds.isEmpty { editor.deleteMediaAssets(ids: Set(assetIds)) }
-            if !folderIds.isEmpty { editor.deleteFolders(ids: Set(folderIds)) }
+            if !assetIds.isEmpty { editor.deleteMediaAssets(ids: assetIds) }
+            if !folderIds.isEmpty { editor.deleteFolders(ids: folderIds) }
             clipsRemoved = clipsBefore - totalClipCount(editor)
-            deletedAssets = assetIds.count
-            deletedFolders = folderIds.count
-            for id in deletedTimelineIds { editor.deleteTimeline(id) }
+            for id in timelineIds { editor.deleteTimeline(id) }
         }
 
-        if !deletedTimelineIds.isEmpty {
+        if !timelineIds.isEmpty {
             let nestRefs = editor.timelines.flatMap(\.tracks).flatMap(\.clips)
-                .filter { deletedTimelineIds.contains($0.mediaRef) }.count
+                .filter { timelineIds.contains($0.mediaRef) }.count
             if nestRefs > 0 {
                 warnings.append("\(nestRefs) nest clip(s) still reference deleted timeline(s) and will render black.")
             }
@@ -203,14 +200,18 @@ extension ToolExecutor {
         if !renames.isEmpty { payload["renamed"] = renames.count }
         if !deletes.isEmpty {
             var deleted: [String: Any] = [:]
-            if deletedAssets > 0 { deleted["assets"] = deletedAssets }
-            if deletedFolders > 0 { deleted["folders"] = deletedFolders }
-            if !deletedTimelineIds.isEmpty { deleted["timelines"] = deletedTimelineIds.count }
+            if !assetIds.isEmpty { deleted["assets"] = assetIds.count }
+            if !folderIds.isEmpty { deleted["folders"] = folderIds.count }
+            if !timelineIds.isEmpty { deleted["timelines"] = timelineIds.count }
             payload["deleted"] = deleted
         }
         if clipsRemoved > 0 { payload["clipsRemoved"] = clipsRemoved }
         if !warnings.isEmpty { payload["warnings"] = warnings }
-        return .ok(Self.jsonString(payload) ?? "{}")
+        if editor.activeTimelineId != activeBefore {
+            payload["notes"] = ["Active timeline changed — re-read get_timeline."]
+            return .ok(Self.jsonString(payload) ?? "{}")
+        }
+        return mutationResult(editor, since: snapshot, extra: payload)
     }
 
     private func parseMoves(_ args: [String: Any], editor: EditorViewModel) throws -> [OrganizeMove] {

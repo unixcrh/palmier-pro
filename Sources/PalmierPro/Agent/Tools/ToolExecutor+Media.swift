@@ -23,8 +23,8 @@ extension ToolExecutor {
         let pendingOnly = args["pending"] as? Bool ?? false
         var folderScope: Set<String>?
         if let folderPath = args.string("folder") {
-            folderScope = folderIdsIncludingDescendants(
-                [try folderId(atPath: folderPath, editor: editor)], editor: editor)
+            folderScope = editor.folderIdsIncludingDescendants(
+                [try folderId(atPath: folderPath, editor: editor)])
         }
 
         var assets: [[String: Any]] = []
@@ -52,15 +52,7 @@ extension ToolExecutor {
         if idFilter.isEmpty && !pendingOnly && folderScope == nil {
             let folderPaths = allFolderPaths(editor)
             if !folderPaths.isEmpty { payload["folders"] = folderPaths }
-            payload["timelines"] = editor.timelines.map { t -> [String: Any] in
-                var e: [String: Any] = [
-                    "timelineId": t.id, "name": t.name,
-                    "durationSeconds": Double(t.totalFrames) / Double(max(t.fps, 1)),
-                ]
-                if t.id == editor.activeTimelineId { e["active"] = true }
-                if let path = folderPathString(t.folderId, editor: editor) { e["folder"] = path }
-                return e
-            }
+            payload["timelines"] = timelineEntries(editor, detailed: true)
         }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(payload, toPlaces: 3)) else {
             throw ToolError("Failed to encode media library")

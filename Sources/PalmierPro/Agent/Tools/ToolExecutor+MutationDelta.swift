@@ -117,8 +117,7 @@ extension ToolExecutor {
         guard !collapsedGids.isEmpty else { return [] }
         changed = changed.filter { gidByMember[$0].map { !collapsedGids.contains($0) } ?? true }
 
-        guard let dict = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(editor.timeline)) as? [String: Any],
-              let rawTracks = dict["tracks"] as? [[String: Any]] else { return [] }
+        guard let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
         var out: [[String: Any]] = []
         for track in Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: false) {
             for var group in track["captionGroups"] as? [[String: Any]] ?? [] {
@@ -133,8 +132,7 @@ extension ToolExecutor {
     /// Returns clips in get_timeline shape with track index, folding audio and captions.
     private func readShapedClips(_ editor: EditorViewModel, ids: Set<String>) -> [[String: Any]] {
         guard !ids.isEmpty,
-              let dict = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(editor.timeline)) as? [String: Any],
-              let rawTracks = dict["tracks"] as? [[String: Any]] else { return [] }
+              let rawTracks = Self.rawTimelineDict(editor.timeline)?["tracks"] as? [[String: Any]] else { return [] }
         let tracks = Self.compactTracks(rawTracks, editor: editor, window: nil, captionDetail: true)
 
         var byId: [String: [String: Any]] = [:]
@@ -155,6 +153,19 @@ extension ToolExecutor {
                         "textContent": row[3], "captionGroupId": group["captionGroupId"] ?? "",
                     ]
                 }
+            }
+        }
+
+        // Caption rows are capped per group; echo over-cap clips straight from the model.
+        for (index, track) in editor.timeline.tracks.enumerated() {
+            for clip in track.clips where ids.contains(clip.id) && byId[clip.id] == nil {
+                var entry: [String: Any] = [
+                    "id": clip.id, "track": index,
+                    "frames": [clip.startFrame, clip.startFrame + clip.durationFrames],
+                ]
+                if let text = clip.textContent { entry["textContent"] = text }
+                if let gid = clip.captionGroupId { entry["captionGroupId"] = gid }
+                byId[clip.id] = entry
             }
         }
 

@@ -9,9 +9,7 @@ extension ToolExecutor {
         let window = try Self.frameWindow(args)
         let captionDetail = args["captionDetail"] as? Bool ?? false
 
-        guard var dict = try? JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(editor.timeline)
-        ) as? [String: Any] else { throw ToolError("Failed to encode timeline") }
+        guard var dict = Self.rawTimelineDict(editor.timeline) else { throw ToolError("Failed to encode timeline") }
         dict.removeValue(forKey: "settingsConfigured")
         if let tracks = dict["tracks"] as? [[String: Any]] {
             dict["tracks"] = Self.compactTracks(tracks, editor: editor, window: window, captionDetail: captionDetail)
@@ -22,18 +20,32 @@ extension ToolExecutor {
             dict["window"] = [window.lowerBound, min(window.upperBound, editor.timeline.totalFrames)]
         }
         dict["currentFrame"] = editor.currentFrame
-        dict["canGenerate"] = AccountService.shared.isSignedIn && AccountService.shared.hasCredits
+        dict["canGenerate"] = Self.canGenerate
         if editor.timelines.count > 1 {
-            dict["timelines"] = editor.timelines.map { t -> [String: Any] in
-                var entry: [String: Any] = ["timelineId": t.id, "name": t.name]
-                if t.id == editor.activeTimelineId { entry["active"] = true }
-                return entry
-            }
+            dict["timelines"] = timelineEntries(editor)
         }
         guard let json = Self.jsonString(roundJSONFloatingPointNumbers(dict, toPlaces: 3)) else {
             throw ToolError("Failed to encode timeline")
         }
         return .ok(json)
+    }
+
+    static var canGenerate: Bool { AccountService.shared.isSignedIn && AccountService.shared.hasCredits }
+
+    static func rawTimelineDict(_ timeline: Timeline) -> [String: Any]? {
+        try? JSONSerialization.jsonObject(with: JSONEncoder().encode(timeline)) as? [String: Any]
+    }
+
+    func timelineEntries(_ editor: EditorViewModel, detailed: Bool = false) -> [[String: Any]] {
+        editor.timelines.map { t in
+            var e: [String: Any] = ["timelineId": t.id, "name": t.name]
+            if t.id == editor.activeTimelineId { e["active"] = true }
+            if detailed {
+                e["durationSeconds"] = Double(t.totalFrames) / Double(max(t.fps, 1))
+                if let path = folderPathString(t.folderId, editor: editor) { e["folder"] = path }
+            }
+            return e
+        }
     }
 
     private static func frameWindow(_ args: [String: Any]) throws -> Range<Int>? {
@@ -271,7 +283,7 @@ extension ToolExecutor {
     }
 
     private static func compactClip(
-        _ clip: [String: Any], fold: LinkFold? = nil, grades: [String: [String: Any]] = [:]
+        _ clip: [String: Any], fold: LinkFold, grades: [String: [String: Any]]
     ) -> [String: Any] {
         var out = compactClipKeyframes(clip)
         if let s = out["sourceClipType"] as? String, s == out["mediaType"] as? String {
@@ -292,7 +304,7 @@ extension ToolExecutor {
         out["frames"] = [start, start + intValue(out["durationFrames"])]
         out.removeValue(forKey: "startFrame")
         out.removeValue(forKey: "durationFrames")
-        if let fold, let id = out["id"] as? String, let partner = fold.partnerByVisualId[id] {
+        if let id = out["id"] as? String, let partner = fold.partnerByVisualId[id] {
             out["audio"] = audioSummary(partner.clip, trackIndex: partner.trackIndex, visual: clip)
             out.removeValue(forKey: "linkGroupId")
         }
