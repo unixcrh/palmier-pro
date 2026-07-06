@@ -6,7 +6,7 @@ struct SourceTimecode: Equatable {
     let frame: Int
     let quanta: Int
     let dropFrame: Bool
-    /// Exact seconds per TC frame (e.g. 1001/30000 for NTSC); nil falls back to 1/quanta.
+    /// Exact seconds per TC frame (1001/30000 for NTSC); nil falls back to 1/quanta.
     var frameDuration: Double? = nil
 
     /// Start timecode expressed in `fps`-frame units (for a progressive source, `quanta` == `fps`).
@@ -15,12 +15,10 @@ struct SourceTimecode: Equatable {
         return Int((Double(frame) / Double(quanta) * Double(fps)).rounded())
     }
 
-    var seconds: Double {
-        Double(frame) * (frameDuration ?? (quanta > 0 ? 1 / Double(quanta) : 0))
-    }
+    var seconds: Double { Double(frame) * (frameDuration ?? (quanta > 0 ? 1 / Double(quanta) : 0)) }
 }
 
-/// Per-file timing signals for sync: embedded SMPTE timecode and/or the recording-start capture date.
+/// Per-file sync signals: embedded SMPTE timecode and/or recording-start capture date.
 struct SourceTiming: Sendable, Equatable {
     var timecode: SourceTimecode?
     var captureDate: Date?
@@ -34,55 +32,24 @@ enum SourceTimingReader {
                 group.addTask { (mediaRef, await read(url: url)) }
             }
             var cache: [String: SourceTiming] = [:]
-            for await (mediaRef, timing) in group {
-                if timing.timecode != nil || timing.captureDate != nil { cache[mediaRef] = timing }
+            for await (mediaRef, timing) in group where timing != SourceTiming() {
+                cache[mediaRef] = timing
             }
             return cache
         }
     }
 
+    static func timecodes(mediaRefs: Set<String>, urls: [String: URL]) async -> [String: SourceTimecode] {
+        await cache(mediaRefs: mediaRefs, urls: urls).compactMapValues(\.timecode)
+    }
+
     static func read(url: URL) async -> SourceTiming {
-        async let timecode = SourceTimecodeReader.read(url: url)
+        async let timecode = timecode(url: url)
         async let captureDate = captureDate(url: url)
         return await SourceTiming(timecode: timecode, captureDate: captureDate)
     }
 
-    /// QuickTime recording start date with timezone. Ignores file creation time.
-    private static func captureDate(url: URL) async -> Date? {
-        let asset = AVURLAsset(url: url)
-        guard let items = try? await asset.load(.metadata) else { return nil }
-        guard let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: .quickTimeMetadataCreationDate).first
-        else { return nil }
-        if let date = try? await item.load(.dateValue) { return date }
-        if let string = try? await item.load(.stringValue) { return parseQuickTimeDate(string) }
-        return nil
-    }
-
-    static func parseQuickTimeDate(_ string: String) -> Date? {
-        if let date = ISO8601DateFormatter().date(from: string) { return date }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZ"
-        return formatter.date(from: string)
-    }
-}
-
-enum SourceTimecodeReader {
-    static func cache(mediaRefs: Set<String>, urls: [String: URL]) async -> [String: SourceTimecode] {
-        await withTaskGroup(of: (String, SourceTimecode?).self) { group in
-            for mediaRef in mediaRefs {
-                guard let url = urls[mediaRef] else { continue }
-                group.addTask { (mediaRef, await read(url: url)) }
-            }
-            var cache: [String: SourceTimecode] = [:]
-            for await (mediaRef, timecode) in group {
-                if let timecode { cache[mediaRef] = timecode }
-            }
-            return cache
-        }
-    }
-
-    static func read(url: URL) async -> SourceTimecode? {
+    private static func timecode(url: URL) async -> SourceTimecode? {
         let asset = AVURLAsset(url: url)
         guard let track = try? await asset.loadTracks(withMediaType: .timecode).first,
               let format = try? await track.load(.formatDescriptions).first,
@@ -105,5 +72,23 @@ enum SourceTimecodeReader {
             return SourceTimecode(frame: Int(UInt32(bigEndian: be)), quanta: quanta, dropFrame: dropFrame, frameDuration: frameDuration)
         }
         return nil
+    }
+
+    /// QuickTime recording start; file creation time stamps finalization, not capture.
+    private static func captureDate(url: URL) async -> Date? {
+        guard let items = try? await AVURLAsset(url: url).load(.metadata),
+              let item = AVMetadataItem.metadataItems(from: items, filteredByIdentifier: .quickTimeMetadataCreationDate).first
+        else { return nil }
+        if let date = try? await item.load(.dateValue) { return date }
+        if let string = try? await item.load(.stringValue) { return parseQuickTimeDate(string) }
+        return nil
+    }
+
+    static func parseQuickTimeDate(_ string: String) -> Date? {
+        if let date = ISO8601DateFormatter().date(from: string) { return date }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZZZ"
+        return formatter.date(from: string)
     }
 }

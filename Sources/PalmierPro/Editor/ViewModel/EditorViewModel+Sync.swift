@@ -17,7 +17,7 @@ extension EditorViewModel {
         static let minSpeed: Double = 0.0001
         /// ± window around a capture-date seed; covers typical device clock skew.
         static let dateSeedWindowSeconds: Double = 3
-        /// Matches on thinner overlaps are spurious edge artifacts, not alignments.
+        /// Thinner overlaps produce spurious edge matches that can beat the true alignment.
         static let minOverlapSeconds: Double = 3
     }
 
@@ -54,15 +54,17 @@ extension EditorViewModel {
             guard let group = clip.linkGroupId else { return [clip] }
             return timeline.tracks.flatMap(\.clips).filter { $0.linkGroupId == group }
         }
+        func liveClip(_ id: String) -> Clip? {
+            findClip(id: id).map { timeline.tracks[$0.trackIndex].clips[$0.clipIndex] }
+        }
 
         var refs = Set(unit(of: refClip).map(\.mediaRef))
         for id in targets {
-            guard let loc = findClip(id: id) else { continue }
-            refs.formUnion(unit(of: timeline.tracks[loc.trackIndex].clips[loc.clipIndex]).map(\.mediaRef))
+            guard let clip = liveClip(id) else { continue }
+            refs.formUnion(unit(of: clip).map(\.mediaRef))
         }
-        var urls: [String: URL] = [:]
-        for ref in refs { urls[ref] = mediaResolver.resolveURL(for: ref) }
-        let timingCache = await SourceTimingReader.cache(mediaRefs: refs, urls: urls)
+        let timingCache = await SourceTimingReader.cache(
+            mediaRefs: refs, urls: refs.reduce(into: [:]) { $0[$1] = mediaResolver.resolveURL(for: $1) })
 
         func tcCarrier(in clips: [Clip]) -> (clip: Clip, tc: SourceTimecode)? {
             let hits = clips.compactMap { c in timingCache[c.mediaRef]?.timecode.map { (c, $0) } }
@@ -74,87 +76,64 @@ extension EditorViewModel {
         let maxLag = max(1, Int((searchWindowSeconds / hop).rounded()))
         let seedWindow = max(1, Int((SyncDefaults.dateSeedWindowSeconds / hop).rounded()))
         let minOverlap = max(AudioSyncCorrelator.minOverlap, Int((SyncDefaults.minOverlapSeconds / hop).rounded()))
-        var refSamples: [Float] = []
-        var refEnvLoaded = false
 
-        struct Placement {
-            let clipId: String
-            let rawStart: Int
-            let confidence: Double
-            let method: SyncMethod
-        }
-        var placements: [Placement] = []
-
-        // A clip other clips can audio-align against: the reference first, then each synced target.
-        struct AudioAnchor {
-            let rawStart: Int
-            let samples: [Float]
-            let speed: Double
-            let mediaRef: String
-            let trimStartFrame: Int
-        }
-        var anchors: [AudioAnchor] = []
-
-        struct Candidate {
+        struct AudioClip {
             let clipId: String
             let samples: [Float]
             let speed: Double
             let mediaRef: String
             let trimStartFrame: Int
-            var direct: (rawStart: Int, confidence: Double)?
         }
-        var candidates: [Candidate] = []
+        typealias Hit = (rawStart: Int, confidence: Double)
+        var anchors: [(rawStart: Int, clip: AudioClip)] = []
+        var candidates: [(clip: AudioClip, direct: Hit?)] = []
+        var placements: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod)] = []
+        var refAudioTried = false
 
-        func dateSeedHops(anchor: AudioAnchor, targetRef: String, targetTrim: Int) -> Int? {
-            guard let anchorDate = timingCache[anchor.mediaRef]?.captureDate,
-                  let targetDate = timingCache[targetRef]?.captureDate else { return nil }
-            let lagSeconds = targetDate.timeIntervalSince(anchorDate)
-                + Double(targetTrim - anchor.trimStartFrame) / fps
-            return Int((lagSeconds / hop).rounded())
-        }
-
-        // Use capture dates to narrow the search window if clocks are trusted.
-        func matchAgainst(_ anchor: AudioAnchor, samples: [Float], seedHops: Int?) async -> (rawStart: Int, confidence: Double)? {
-            let reference = anchor.samples
-            let match = await Task.detached(priority: .userInitiated) { () -> AudioSyncCorrelator.Result? in
-                if let seedHops {
-                    let seeded = AudioSyncCorrelator.correlate(
-                        reference: reference, target: samples,
-                        maxLagHops: seedWindow, centerLagHops: seedHops, minOverlapHops: minOverlap)
-                    if let seeded, seeded.confidence >= minConfidence { return seeded }
-                }
+        // Seed match with capture dates; fallback to window if weak or missing.
+        func match(_ anchor: (rawStart: Int, clip: AudioClip), _ target: AudioClip) async -> Hit? {
+            var seedHops: Int?
+            if let anchorDate = timingCache[anchor.clip.mediaRef]?.captureDate,
+               let targetDate = timingCache[target.mediaRef]?.captureDate {
+                let lagSeconds = targetDate.timeIntervalSince(anchorDate)
+                    + Double(target.trimStartFrame - anchor.clip.trimStartFrame) / fps
+                seedHops = Int((lagSeconds / hop).rounded())
+            }
+            let reference = anchor.clip.samples
+            let samples = target.samples
+            let result = await Task.detached(priority: .userInitiated) { () -> AudioSyncCorrelator.Result? in
+                if let seedHops,
+                   let seeded = AudioSyncCorrelator.correlate(
+                       reference: reference, target: samples, maxLagHops: seedWindow,
+                       centerLagHops: seedHops, minOverlapHops: minOverlap),
+                   seeded.confidence >= minConfidence { return seeded }
                 return AudioSyncCorrelator.correlate(
                     reference: reference, target: samples, maxLagHops: maxLag, minOverlapHops: minOverlap)
             }.value
-            guard let match, match.confidence >= minConfidence else { return nil }
-            let lagFrames = Double(match.lagHops) * hop * fps / max(anchor.speed, SyncDefaults.minSpeed)
-            return (Int((Double(anchor.rawStart) + lagFrames).rounded()), match.confidence)
+            guard let result, result.confidence >= minConfidence else { return nil }
+            let lagFrames = Double(result.lagHops) * hop * fps / max(anchor.clip.speed, SyncDefaults.minSpeed)
+            return (Int((Double(anchor.rawStart) + lagFrames).rounded()), result.confidence)
         }
 
         var seenUnits = Set<String>()
         for targetId in targets {
-            guard let loc = findClip(id: targetId) else { report.failures.append((targetId, "Clip not found.")); continue }
-            let targetClip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+            guard let targetClip = liveClip(targetId) else { report.failures.append((targetId, "Clip not found.")); continue }
             let unitKey = targetClip.linkGroupId ?? targetClip.id
             if unitKey == refUnitKey {
-                report.failures.append((targetId, "Clip is linked to the reference — they already move together."))
-                continue
+                report.failures.append((targetId, "Clip is linked to the reference — they already move together.")); continue
             }
             guard seenUnits.insert(unitKey).inserted else { continue }
             let unitClips = unit(of: targetClip)
 
             if let (refCarrier, refTC) = refTCCarrier, let (carrier, targetTC) = tcCarrier(in: unitClips) {
-                guard let rLoc = findClip(id: refCarrier.id), let cLoc = findClip(id: carrier.id) else {
+                guard let liveRef = liveClip(refCarrier.id), let liveCarrier = liveClip(carrier.id) else {
                     report.failures.append((targetId, "Clip not found.")); continue
                 }
-                let liveRef = timeline.tracks[rLoc.trackIndex].clips[rLoc.clipIndex]
-                let liveCarrier = timeline.tracks[cLoc.trackIndex].clips[cLoc.clipIndex]
                 let rawStart = Self.timecodeAlignedStart(
                     refStartFrame: liveRef.startFrame, refTrimStartFrame: liveRef.trimStartFrame,
                     refSpeed: liveRef.speed, refTimecode: refTC,
-                    targetTrimStartFrame: liveCarrier.trimStartFrame, targetTimecode: targetTC, fps: fps
-                )
-                placements.append(Placement(clipId: carrier.id, rawStart: rawStart, confidence: 1.0, method: .timecode))
+                    targetTrimStartFrame: liveCarrier.trimStartFrame, targetTimecode: targetTC, fps: fps)
+                placements.append((carrier.id, rawStart, 1.0, .timecode))
                 continue
             }
             if mode == .timecode {
@@ -172,62 +151,46 @@ extension EditorViewModel {
             guard let env = await envelope(of: bearer, fps: fps), !env.samples.isEmpty else {
                 report.failures.append((bearer.id, "Clip has no audio.")); continue
             }
-            if !refEnvLoaded {
-                refEnvLoaded = true
-                if let rLoc = findClip(id: referenceClipId) {
-                    let liveRef = timeline.tracks[rLoc.trackIndex].clips[rLoc.clipIndex]
-                    if let refEnv = await envelope(of: liveRef, fps: fps), !refEnv.samples.isEmpty {
-                        refSamples = refEnv.samples
-                        anchors.append(AudioAnchor(
-                            rawStart: liveRef.startFrame, samples: refEnv.samples, speed: liveRef.speed,
-                            mediaRef: liveRef.mediaRef, trimStartFrame: liveRef.trimStartFrame))
-                    }
+            if !refAudioTried {
+                refAudioTried = true
+                if let liveRef = liveClip(referenceClipId),
+                   let refEnv = await envelope(of: liveRef, fps: fps), !refEnv.samples.isEmpty {
+                    anchors.append((liveRef.startFrame, AudioClip(
+                        clipId: liveRef.id, samples: refEnv.samples, speed: liveRef.speed,
+                        mediaRef: liveRef.mediaRef, trimStartFrame: liveRef.trimStartFrame)))
                 }
             }
-            guard !refSamples.isEmpty else {
+            guard let refAnchor = anchors.first else {
                 report.failures.append((bearer.id, mode == .auto && refTCCarrier == nil
                     ? "Reference has no source timecode or audio." : "Reference clip has no audio."))
                 continue
             }
-            guard let bLoc = findClip(id: bearer.id) else {
+            guard let liveBearer = liveClip(bearer.id) else {
                 report.failures.append((bearer.id, "Clip not found.")); continue
             }
-            let liveBearer = timeline.tracks[bLoc.trackIndex].clips[bLoc.clipIndex]
-            var candidate = Candidate(
+            let clip = AudioClip(
                 clipId: bearer.id, samples: env.samples, speed: liveBearer.speed,
                 mediaRef: liveBearer.mediaRef, trimStartFrame: liveBearer.trimStartFrame)
-            if let ref = anchors.first {
-                let seed = dateSeedHops(anchor: ref, targetRef: candidate.mediaRef, targetTrim: candidate.trimStartFrame)
-                candidate.direct = await matchAgainst(ref, samples: candidate.samples, seedHops: seed)
-            }
-            candidates.append(candidate)
+            candidates.append((clip, await match(refAnchor, clip)))
         }
 
-        // Place top reference match first; weaker clips may match an already-aligned sibling.
+        // Place the most confident match first; weaker clips may align better to those placed after.
         candidates.sort { ($0.direct?.confidence ?? 0) > ($1.direct?.confidence ?? 0) }
-        for candidate in candidates {
-            var best = candidate.direct
+        for (clip, direct) in candidates {
+            var best = direct
             for anchor in anchors.dropFirst() {
-                let seed = dateSeedHops(anchor: anchor, targetRef: candidate.mediaRef, targetTrim: candidate.trimStartFrame)
-                if let hit = await matchAgainst(anchor, samples: candidate.samples, seedHops: seed),
-                   hit.confidence > (best?.confidence ?? 0) { best = hit }
+                if let hit = await match(anchor, clip), hit.confidence > (best?.confidence ?? 0) { best = hit }
             }
             guard let best else {
-                report.failures.append((candidate.clipId, "No confident alignment — clips may not overlap.")); continue
+                report.failures.append((clip.clipId, "No confident alignment — clips may not overlap.")); continue
             }
-            placements.append(Placement(clipId: candidate.clipId, rawStart: best.rawStart, confidence: best.confidence, method: .audio))
-            anchors.append(AudioAnchor(
-                rawStart: best.rawStart, samples: candidate.samples, speed: candidate.speed,
-                mediaRef: candidate.mediaRef, trimStartFrame: candidate.trimStartFrame))
+            placements.append((clip.clipId, best.rawStart, best.confidence, .audio))
+            anchors.append((best.rawStart, clip))
         }
 
-        // Nothing may land before frame 0: shift the whole group (reference included) right instead.
-        let shift = max(0, -(placements.map(\.rawStart).min() ?? 0))
-        report.shiftedFrames = shift
-
+        // Validate moves before applying group shift; overlap results are preserved.
         var allMoves: [(clipId: String, toTrack: Int, toFrame: Int)] = []
         var movedIds = Set<String>()
-
         func queueMove(of clipId: String, toFrame rawStart: Int) -> String? {
             guard let loc = findClip(id: clipId) else { return "Clip not found." }
             var moves = [(clipId: clipId, toTrack: loc.trackIndex, toFrame: rawStart)]
@@ -236,7 +199,7 @@ extension EditorViewModel {
                     moves.append((clipId: pm.clipId, toTrack: pLoc.trackIndex, toFrame: pm.toFrame))
                 }
             }
-            if shift == 0, moveWouldClobberReference(moves, referenceClipId: referenceClipId) {
+            if clipId != referenceClipId, moveWouldClobberReference(moves, referenceClipId: referenceClipId) {
                 return "Shares the reference's track — move it to its own track first."
             }
             if movesOverlapQueued(moves, allMoves) {
@@ -246,25 +209,33 @@ extension EditorViewModel {
             return nil
         }
 
-        if shift > 0, let rLoc = findClip(id: referenceClipId) {
-            let liveRef = timeline.tracks[rLoc.trackIndex].clips[rLoc.clipIndex]
-            _ = queueMove(of: referenceClipId, toFrame: liveRef.startFrame + shift)
-        }
-        for placement in placements {
-            guard let loc = findClip(id: placement.clipId) else {
-                report.failures.append((placement.clipId, "Clip not found.")); continue
+        var accepted: [(clipId: String, rawStart: Int, confidence: Double, method: SyncMethod, currentStart: Int)] = []
+        for p in placements {
+            guard let clip = liveClip(p.clipId) else { report.failures.append((p.clipId, "Clip not found.")); continue }
+            if let failure = queueMove(of: p.clipId, toFrame: p.rawStart) {
+                report.failures.append((p.clipId, failure)); continue
             }
-            let current = timeline.tracks[loc.trackIndex].clips[loc.clipIndex].startFrame
-            let final = placement.rawStart + shift
-            if final != current, let failure = queueMove(of: placement.clipId, toFrame: final) {
-                report.failures.append((placement.clipId, failure)); continue
-            }
-            report.synced.append((placement.clipId, final - current, placement.confidence, placement.method))
+            accepted.append((p.clipId, p.rawStart, p.confidence, p.method, clip.startFrame))
         }
 
-        if !allMoves.isEmpty {
+        // Shift right if any accepted placement starts before frame 0.
+        let shift = max(0, -(accepted.map(\.rawStart).min() ?? 0))
+        report.shiftedFrames = shift
+        if shift > 0, let liveRef = liveClip(referenceClipId) {
+            if queueMove(of: referenceClipId, toFrame: liveRef.startFrame) != nil {
+                report.failures.append(contentsOf: accepted.map { ($0.clipId, "Reference clip unavailable.") })
+                return report
+            }
+        }
+        report.synced = accepted.map { ($0.clipId, $0.rawStart + shift - $0.currentStart, $0.confidence, $0.method) }
+
+        let moves = allMoves.compactMap { move -> (clipId: String, toTrack: Int, toFrame: Int)? in
+            guard let clip = liveClip(move.clipId), move.toFrame + shift != clip.startFrame else { return nil }
+            return (move.clipId, move.toTrack, move.toFrame + shift)
+        }
+        if !moves.isEmpty {
             undoManager?.beginUndoGrouping()
-            moveClips(allMoves)
+            moveClips(moves)
             undoManager?.endUndoGrouping()
             undoManager?.setActionName("Synchronize")
         }
