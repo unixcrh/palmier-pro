@@ -49,7 +49,7 @@ final class BeatStore {
         let startEpoch = epoch[key, default: 0]
 
         let url = asset.url
-        let task = Task(priority: .utility) { [weak self] in
+        let task = Task(priority: .utility) { @MainActor [weak self] in
             do {
                 let analysis = try await BeatDetector.analysis(for: url, mediaRef: key, force: force)
                 guard let self, self.epoch[key, default: 0] == startEpoch else {
