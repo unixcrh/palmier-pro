@@ -71,8 +71,8 @@ final class BeatStore {
                 if !(error is BeatStoreStaleAnalysisError) {
                     Log.preview.error("beats failed mediaRef=\(key): \(Log.detail(error))")
                 }
-                if let self, self.epoch[key, default: 0] == startEpoch {
-                    if self.tasks[key]?.id == id { self.tasks[key] = nil }
+                if let self, self.epoch[key, default: 0] == startEpoch, self.tasks[key]?.id == id {
+                    self.tasks[key] = nil
                     self.failed.insert(key)
                 }
                 throw error
