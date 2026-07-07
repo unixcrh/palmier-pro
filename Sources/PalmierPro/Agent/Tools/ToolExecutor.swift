@@ -153,9 +153,11 @@ final class ToolExecutor {
         guard undoManager.undoActionName == expected else {
             throw ToolError("The most recent change ('\(undoManager.undoActionName)') wasn't made by the assistant — not undoing it.")
         }
+        let activeBefore = editor.activeTimelineId
         undoManager.undo()
         agentUndoStack.removeLast()
-        return .ok("Undid: \(expected). The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
+        let switched = editor.activeTimelineId != activeBefore ? " Active timeline changed." : ""
+        return .ok("Undid: \(expected).\(switched) The timeline is restored to its state before that edit; re-read with get_timeline or get_transcript before editing again.")
     }
 
     // Shared helpers used by tool extensions in other files.

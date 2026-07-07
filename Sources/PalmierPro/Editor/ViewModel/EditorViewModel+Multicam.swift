@@ -331,12 +331,14 @@ extension EditorViewModel {
 
     // MARK: - Angle switching
 
-    /// Batch-switches camera angles over validated parent-frame ranges.
+    /// Batch-switches camera angles over validated ranges — parent frames from an
+    /// edit timeline, child frames when the group itself is active.
     func switchMulticamAngles(childId: String, requests: [AngleSwitchRequest]) throws -> AngleSwitchReport {
         guard let (child, source) = multicamChild(id: childId) else {
             throw ToolError("Not a multicam group: \(childId)")
         }
-        let carriers = multicamCarriers(of: childId)
+        let carriers = activeTimelineId == childId
+            ? [Self.identityCarrier(child)] : multicamCarriers(of: childId)
         guard !carriers.isEmpty else {
             throw ToolError("The multicam has no clip on the active timeline.")
         }
@@ -448,10 +450,21 @@ extension EditorViewModel {
         return segments.isEmpty ? nil : segments
     }
 
-    /// Program EDL as [angleLabel, parentStart, parentEnd) rows, run-length across carriers.
+    /// Inside the open group, ranges are child frames — an identity carrier maps them 1:1.
+    private static func identityCarrier(_ child: Timeline) -> Clip {
+        var c = Clip(mediaRef: child.id, startFrame: 0, durationFrames: max(1, child.totalFrames))
+        c.sourceClipType = .sequence
+        return c
+    }
+
+    /// Program EDL as [angleLabel, start, end) rows, run-length across carriers —
+    /// parent frames from an edit timeline, child frames inside the open group.
     func multicamProgramRows(childId: String, window: Range<Int>? = nil) -> [[Any]] {
+        let carriers = activeTimelineId == childId
+            ? multicamChild(id: childId).map { [Self.identityCarrier($0.child)] } ?? []
+            : multicamCarriers(of: childId)
         var rows: [[Any]] = []
-        for carrier in multicamCarriers(of: childId) {
+        for carrier in carriers {
             for segment in multicamRenderSegments(for: carrier) ?? [] {
                 var r = segment.clip.startFrame..<segment.clip.endFrame
                 if let window { r = r.clamped(to: window) }

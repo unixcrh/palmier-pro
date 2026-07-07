@@ -22,7 +22,7 @@ extension ToolExecutor {
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = Self.canGenerate
         if editor.timeline.isMulticam {
-            dict["note"] = "This is the inside of a multicam group the user has open. The time axis is locked (no move/ripple/retime/track changes); split, trim, delete, and property edits are allowed. Drive angle cuts with change_cam; the edit timelines are listed in get_media."
+            dict["note"] = "This is the inside of a multicam group. The time axis is locked (no move/ripple/retime/track changes, no new clips or text); split, trim, delete, and property edits are allowed. change_cam works here with ranges in these frames; the edit timelines are listed in get_media."
         }
         if editor.timelines.count > 1 {
             dict["timelines"] = timelineEntries(editor)
@@ -100,9 +100,6 @@ extension ToolExecutor {
         guard let target = editor.timeline(for: id) else {
             throw ToolError("No timeline with id '\(id)'. get_media lists the project's timelines.")
         }
-        guard !target.isMulticam else {
-            throw ToolError("'\(target.name)' is a multicam group — drive it with change_cam / get_multicam. (Users can open it in the UI; its structure is locked.)")
-        }
         var payload: [String: Any] = [
             "timelineId": target.id,
             "name": target.name,
@@ -116,6 +113,9 @@ extension ToolExecutor {
         } else {
             editor.activateTimeline(target.id)
             payload["note"] = "Re-read get_timeline — clip and track ids from the previous timeline no longer apply."
+        }
+        if target.isMulticam {
+            payload["note"] = (payload["note"] as? String ?? "") + " This is the inside of a multicam group: the time axis is locked (no move/ripple/retime/track changes/timing slips, no new clips or text); split, delete, and property edits (transform, crop, opacity, effects, color, keyframes) are allowed. change_cam works here with ranges in the group's own frames."
         }
         return .ok(Self.jsonString(payload) ?? "{}")
     }

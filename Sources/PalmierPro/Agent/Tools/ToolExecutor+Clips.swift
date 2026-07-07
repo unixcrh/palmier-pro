@@ -176,6 +176,9 @@ extension ToolExecutor {
     // MARK: add_clips
 
     func addClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        guard !editor.timeline.isMulticam else {
+            throw ToolError("Clips can't be added inside a multicam group — its members are fixed. Add media on the timeline that holds the group's clip; use change_cam for angles.")
+        }
         let input: AddClipsInput = try decodeToolArgs(args, path: "add_clips")
         guard !input.entries.isEmpty else { throw ToolError("Missing or empty 'entries' array") }
         // Decodable doesn't reject unknown nested keys; check each raw entry.
@@ -355,6 +358,9 @@ extension ToolExecutor {
     // MARK: move_clips
 
     func moveClips(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        guard !editor.timeline.isMulticam else {
+            throw ToolError("Moving clips is locked inside a multicam group — split, delete, and property edits are allowed here; rearrange on the timeline that holds the group's clip.")
+        }
         let input: MoveClipsInput = try decodeToolArgs(args, path: "move_clips")
         guard !input.moves.isEmpty else { throw ToolError("Missing or empty 'moves' array") }
         if let raws = args["moves"] as? [Any] {
@@ -897,6 +903,9 @@ extension ToolExecutor {
 
         guard !reorders.isEmpty || !flagSets.isEmpty || !removeIds.isEmpty else {
             throw ToolError("Nothing to do — pass at least one of reorder, set, remove.")
+        }
+        if editor.timeline.isMulticam, !reorders.isEmpty || !removeIds.isEmpty {
+            throw ToolError("Track structure is locked inside a multicam group — set (muted/hidden/syncLocked) is allowed; reorder and remove are not.")
         }
 
         let snapshot = timelineSnapshot(editor)

@@ -257,6 +257,9 @@ extension ToolExecutor {
             guard start >= 0, end > start else {
                 throw ToolError("videoSourceEndFrame must be greater than videoSourceStartFrame (>= 0).")
             }
+            guard !editor.timeline.isMulticam else {
+                throw ToolError("Can't place generated audio inside a multicam group — switch to the timeline that holds the group's clip, or pass videoSourceMediaRef instead of a span.")
+            }
             let mp4 = try await TimelineRenderer.render(
                 timeline: editor.timeline, resolver: editor.mediaResolver,
                 resolveTimeline: editor.timelineResolver(),
@@ -320,11 +323,14 @@ extension ToolExecutor {
                     editor.finalizeGeneratingClip(placeholderId: asset.id, asset: asset)
                 }
             )
-            editor.placeGeneratingAudioClip(
+            let placed = editor.placeGeneratingAudioClip(
                 placeholderId: placeholderId, startFrame: startFrame,
                 spanSeconds: span, actionName: "Add \(model.category.label)"
-            )
-            return .ok("Generation started and placed on the timeline at frame \(startFrame). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
+            ) != nil
+            let placement = placed
+                ? "placed on the timeline at frame \(startFrame)"
+                : "NOT placed (no room on the timeline) — it will land in the media panel; place it with add_clips"
+            return .ok("Generation started and \(placement). Placeholder asset ID: \(placeholderId). Model: \(model.displayName), \(model.category.label) (scored from video).")
         }
 
         let placeholderId = submission.submit(

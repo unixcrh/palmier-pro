@@ -26,6 +26,9 @@ extension ToolExecutor {
 
     private func createSection(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> (payload: [String: Any], notes: [String]) {
         try validateUnknownKeys(args, allowed: ["name", "members", "master", "place", "startFrame", "searchWindowSeconds"], path: "manage_multicam.create")
+        if editor.timeline.isMulticam, args.bool("place") ?? true {
+            throw ToolError("The active timeline is a multicam group — switch to an edit timeline (set_active_timeline) to place a new group, or pass place: false.")
+        }
         guard let rawMembers = args["members"] as? [[String: Any]], rawMembers.count >= 2 else {
             throw ToolError("create.members requires at least two entries (cameras and mics).")
         }
@@ -187,7 +190,7 @@ extension ToolExecutor {
             throw ToolError("Not a multicam group: \(childId)")
         }
         let window = try Self.frameWindow(args)
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "groupId": childId,
             "name": child.name,
             "members": memberRows(editor, childId: childId),
@@ -196,6 +199,9 @@ extension ToolExecutor {
                 ["clipId": $0.id, "frames": [$0.startFrame, $0.endFrame]]
             },
         ]
+        if editor.activeTimelineId == childId {
+            payload["note"] = "Read from inside the group: program rows are in the group's own frames (matching get_timeline here); the group's placement (carriers) lives on the edit timelines."
+        }
         return .ok(Self.jsonString(roundJSONFloatingPointNumbers(payload, toPlaces: 3)) ?? "{}")
     }
 

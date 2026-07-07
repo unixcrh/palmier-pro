@@ -7,6 +7,9 @@ extension ToolExecutor {
 
     func syncClips(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: Self.syncClipsAllowedKeys, path: "sync_clips")
+        guard !editor.timeline.isMulticam else {
+            throw ToolError("sync_clips moves clips, which is locked inside a multicam group — its members are already aligned by the group's sync maps.")
+        }
 
         let referenceClipId = try args.requireString("referenceClipId")
         var targets = args.stringArray("targetClipIds")

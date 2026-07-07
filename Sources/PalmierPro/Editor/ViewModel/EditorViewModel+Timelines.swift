@@ -241,7 +241,7 @@ extension EditorViewModel {
                 timelines[i].tracks[t].clips.removeAll { assetIds.contains($0.mediaRef) }
                 touched = true
             }
-            if touched { timelines[i].tracks.removeAll(where: \.clips.isEmpty) }
+            if touched, !timelines[i].isMulticam { timelines[i].tracks.removeAll(where: \.clips.isEmpty) }
         }
         selectedClipIds.subtract(removed)
         return removed
