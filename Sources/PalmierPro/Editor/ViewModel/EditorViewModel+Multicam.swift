@@ -281,9 +281,11 @@ extension EditorViewModel {
 
         child.multicam = source
         timelines.append(child)
-        registerRemoveUndo(for: child.id, actionName: "Create Multicam")
 
-        guard place else { return (child.id, []) }
+        guard place else {
+            registerRemoveUndo(for: child.id, actionName: "Create Multicam")
+            return (child.id, [])
+        }
 
         // The clip covers the picture; audio-only extends inside the group.
         let angleRanges = source.angles.compactMap { angle in
@@ -296,6 +298,7 @@ extension EditorViewModel {
             timelines.removeAll { $0.id == child.id }
             throw ToolError("Could not place the multicam on the timeline — switch to an edit timeline first.")
         }
+        registerRemoveUndo(for: child.id, actionName: "Create Multicam")
         let carrierIds = timeline.tracks.flatMap(\.clips)
             .filter { $0.mediaRef == child.id && $0.sourceClipType == .sequence }
             .map(\.id)

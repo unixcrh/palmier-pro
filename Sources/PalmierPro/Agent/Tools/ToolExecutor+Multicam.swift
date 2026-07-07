@@ -226,7 +226,9 @@ extension ToolExecutor {
     private func resolveMasterRef(_ master: String?, specs: [EditorViewModel.MulticamMemberSpec], editor: EditorViewModel) throws -> String {
         if let master {
             let expanded = (try? expandingIdPrefixes(in: ["mediaRef": master], editor: editor))?.string("mediaRef") ?? master
-            guard let spec = specs.first(where: { $0.mediaRef == expanded || $0.angleLabel == master }) else {
+            guard let spec = specs.first(where: {
+                $0.mediaRef == expanded || $0.angleLabel?.caseInsensitiveCompare(master) == .orderedSame
+            }) else {
                 throw ToolError("master '\(master)' doesn't match a member's angleLabel or mediaRef.")
             }
             return spec.mediaRef
