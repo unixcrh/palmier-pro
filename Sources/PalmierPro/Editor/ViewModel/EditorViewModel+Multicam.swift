@@ -16,7 +16,19 @@ extension EditorViewModel {
 
     struct AngleSwitchRequest {
         var range: Range<Int>
-        var angle: String
+        var angles: [String]
+        var layout: VideoLayout = .full
+
+        init(range: Range<Int>, angle: String) {
+            self.range = range
+            self.angles = [angle]
+        }
+
+        init(range: Range<Int>, layout: VideoLayout, angles: [String]) {
+            self.range = range
+            self.layout = layout
+            self.angles = angles
+        }
     }
 
     // MARK: - Lookup
@@ -415,8 +427,13 @@ extension EditorViewModel {
         guard !multicamClips(of: groupId).isEmpty else {
             throw ToolError("The group has no clips on the active timeline.")
         }
-        let entries = try requests.map { request in
-            MulticamEngine.Entry(range: request.range, member: try resolveAngle(request.angle, group: group))
+        let entries = try requests.map { request -> MulticamEngine.Entry in
+            guard !request.angles.isEmpty, request.angles.count <= request.layout.slots.count else {
+                throw ToolError("Layout \(request.layout.rawValue) takes at most \(request.layout.slots.count) angle(s): \(request.layout.slots.map(\.id).joined(separator: ", ")).")
+            }
+            return MulticamEngine.Entry(range: request.range,
+                                        slots: try request.angles.map { try resolveAngle($0, group: group) },
+                                        layout: request.layout)
         }
         var outcome = MulticamEngine.Outcome()
         withTimelineSwap(actionName: "Switch Angle") {
@@ -426,11 +443,25 @@ extension EditorViewModel {
                 to: &working,
                 group: group,
                 sourceDurations: multicamSourceDurations(group),
-                fitTransform: { [self] clip in fitTransform(for: clip) }
+                fitTransform: { [self] clip in fitTransform(for: clip) },
+                placement: { [self] clip, rect in layoutPlacement(for: clip, in: rect, fit: .fill) }
             )
             timeline = working
         }
         return outcome
+    }
+
+    /// Lay out the fragment with its current angle in slot 1; other synced
+    /// angles fill remaining slots (partial fill is fine). `.full` exits.
+    func applyMulticamLayout(clipId: String, layout: VideoLayout) {
+        guard let clip = clipFor(id: clipId), let group = multicamGroup(of: clip) else { return }
+        var ordered = group.angles
+        if let idx = ordered.firstIndex(where: { $0.mediaRef == clip.mediaRef }) {
+            ordered.swapAt(0, idx)
+        }
+        let angles = Array(ordered.prefix(layout.slots.count)).map(\.angleLabel)
+        switchOrToast(groupId: group.id, request:
+            AngleSwitchRequest(range: clip.startFrame..<clip.endFrame, layout: layout, angles: angles))
     }
 
     private func resolveAngle(_ label: String, group: MulticamSource) throws -> MulticamSource.Member {
@@ -470,7 +501,24 @@ extension EditorViewModel {
     // MARK: - Manual switching
 
     func switchMulticamSegment(clipId: String, to angle: String) {
-        guard let clip = clipFor(id: clipId), let group = multicamGroup(of: clip) else { return }
+        guard let loc = findClip(id: clipId), let group = multicamGroup(of: timeline.tracks[loc.trackIndex].clips[loc.clipIndex]) else { return }
+        let clip = timeline.tracks[loc.trackIndex].clips[loc.clipIndex]
+        let programTrack = multicamClips(of: group.id)
+            .filter { timeline.tracks[$0.trackIndex].type == .video && $0.clip.mediaType != .audio }
+            .map(\.trackIndex).max()
+        if loc.trackIndex != programTrack {
+            do {
+                let member = try resolveAngle(angle, group: group)
+                withTimelineSwap(actionName: "Switch Angle") {
+                    MulticamEngine.rewrite(&timeline.tracks[loc.trackIndex].clips[loc.clipIndex],
+                                           group: group, to: member,
+                                           sourceDurations: multicamSourceDurations(group), fps: timeline.fps)
+                }
+            } catch let error as ToolError {
+                mediaPanelToast = MediaPanelToast(stringLiteral: error.message)
+            } catch {}
+            return
+        }
         switchOrToast(groupId: group.id, request:
             AngleSwitchRequest(range: clip.startFrame..<clip.endFrame, angle: angle))
     }

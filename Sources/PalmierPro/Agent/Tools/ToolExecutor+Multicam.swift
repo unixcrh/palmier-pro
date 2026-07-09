@@ -82,12 +82,25 @@ extension ToolExecutor {
         var requests: [EditorViewModel.AngleSwitchRequest] = []
         for (i, raw) in rawEntries.enumerated() {
             let path = "entries[\(i)]"
-            try validateUnknownKeys(raw, allowed: ["range", "angle"], path: path)
+            try validateUnknownKeys(raw, allowed: ["range", "angle", "layout", "angles"], path: path)
             guard let range = raw["range"] as? [Any], range.count == 2,
                   let a = (range[0] as? NSNumber)?.intValue, let b = (range[1] as? NSNumber)?.intValue, a < b else {
                 throw ToolError("\(path): range must be [startFrame, endFrame) with start < end.")
             }
-            requests.append(.init(range: a..<b, angle: try raw.requireString("angle")))
+            if let layoutRaw = raw["layout"] as? String {
+                guard raw["angle"] == nil else {
+                    throw ToolError("\(path): pass angle for a full-frame switch OR layout + angles, not both.")
+                }
+                guard let layout = VideoLayout(rawValue: layoutRaw), layout != .full else {
+                    throw ToolError("\(path): unknown layout '\(layoutRaw)'. Valid: \(VideoLayout.allCases.filter { $0 != .full }.map(\.rawValue).joined(separator: ", ")). For full frame, pass angle instead.")
+                }
+                guard let angles = raw["angles"] as? [String], !angles.isEmpty else {
+                    throw ToolError("\(path): layout needs angles — angleLabels in slot order (\(layout.slots.map(\.id).joined(separator: ", "))); fewer than slots leaves cells empty.")
+                }
+                requests.append(.init(range: a..<b, layout: layout, angles: angles))
+            } else {
+                requests.append(.init(range: a..<b, angle: try raw.requireString("angle")))
+            }
         }
 
         let snapshot = timelineSnapshot(editor)
@@ -97,6 +110,7 @@ extension ToolExecutor {
 
         var extra: [String: Any] = ["groupId": groupId, "switched": outcome.switched]
         if outcome.merged > 0 { extra["cutsMerged"] = outcome.merged }
+        if !outcome.overlayClipIds.isEmpty { extra["overlayClipIds"] = outcome.overlayClipIds }
         if let lo = outcome.applied.map(\.lowerBound).min(),
            let hi = outcome.applied.map(\.upperBound).max() {
             extra["program"] = editor.multicamProgramRows(groupId: groupId, window: lo..<hi)

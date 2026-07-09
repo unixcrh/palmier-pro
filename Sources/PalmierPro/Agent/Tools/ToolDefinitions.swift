@@ -597,7 +597,7 @@ enum ToolDefinitions {
         ),
         AgentTool(
             name: .changeCam,
-            description: "Switch a multicam group's full-frame camera angle over timeline frame ranges. Batched entries are one undo step. Ranges where the target angle was not recording clamp or skip. Returns switched count, optional clamps/skips, and program rows over the touched span.",
+            description: "Switch a multicam group's camera angle over timeline frame ranges, full-frame or in a multi-angle layout. Batched entries are one undo step. Ranges where an angle was not recording clamp or skip. Returns switched count, optional clamps/skips/overlayClipIds, and program rows over the touched span.\n\nEach entry is EITHER {range, angle} — full-frame switch — or {range, layout, angles} — PiP/split/grid: angles fill the layout's slots in order (first = the full-frame program slot; fewer angles than slots leaves cells empty), extra angles land as synced overlay clips above the program. A later full-frame entry over the same range clears the layout. Overlay clips are ordinary group clips — restyle with set_clip_properties/apply_layout, remove with remove_clips.",
             inputSchema: objectSchema(
                 properties: [
                     "groupId": ["type": "string", "description": "The multicam group (from manage_multicam create or get_timeline's multicamGroups). Or pass clipId."],
@@ -608,9 +608,11 @@ enum ToolDefinitions {
                         "items": objectSchema(
                             properties: [
                                 "range": ["type": "array", "items": ["type": "integer"], "description": "[startFrame, endFrame) in timeline frames."],
-                                "angle": ["type": "string", "description": "angleLabel to show full-frame."],
+                                "angle": ["type": "string", "description": "angleLabel to show full-frame. Omit when using layout."],
+                                "layout": ["type": "string", "description": "Multi-angle layout: side_by_side, top_bottom, pip_bottom_right, pip_bottom_left, pip_top_right, pip_top_left, grid_2x2, main_sidebar, three_up."],
+                                "angles": ["type": "array", "items": ["type": "string"], "description": "angleLabels in slot order for layout; [0] is the program slot."],
                             ],
-                            required: ["range", "angle"]
+                            required: ["range"]
                         ),
                     ],
                 ],

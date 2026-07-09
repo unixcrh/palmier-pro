@@ -4,7 +4,10 @@ enum MulticamEngine {
 
     struct Entry {
         var range: Range<Int>
-        var member: MulticamSource.Member
+        var slots: [MulticamSource.Member]
+        var layout: VideoLayout = .full
+
+        var member: MulticamSource.Member { slots[0] }
     }
 
     struct Outcome {
@@ -13,6 +16,7 @@ enum MulticamEngine {
         var applied: [Range<Int>] = []
         var clamped: [(requested: Range<Int>, applied: Range<Int>, culprit: String)] = []
         var skipped: [(range: Range<Int>, reason: String)] = []
+        var overlayClipIds: [String] = []
     }
 
     static func maxLagHops(windowSeconds: Double, hopSeconds: Double, referenceCount: Int, targetCount: Int) -> Int {
@@ -20,12 +24,15 @@ enum MulticamEngine {
         return max(1, min(windowHops, min(referenceCount, targetCount) / 2))
     }
 
+    typealias Placement = (Clip, LayoutRect) -> (transform: Transform, crop: Crop)
+
     static func apply(
         entries: [Entry],
         to timeline: inout Timeline,
         group: MulticamSource,
         sourceDurations: [String: Double],
-        fitTransform: (Clip) -> Transform
+        fitTransform: (Clip) -> Transform,
+        placement: Placement
     ) -> Outcome {
         var outcome = Outcome()
         let fps = timeline.fps
@@ -54,6 +61,17 @@ enum MulticamEngine {
                 }
                 if let culprit { outcome.clamped.append((wanted, target, culprit)) }
 
+                let hadLayout = clearOverlays(over: target, abovePrograms: programId, in: &timeline, groupId: group.id) > 0
+                let programRect = entry.layout.slots.first?.rect
+                for (slot, slotMember) in zip(entry.layout.slots.dropFirst(), entry.slots.dropFirst()) {
+                    if let id = placeOverlay(slotMember, over: target, anchor: fragment, anchorMember: member,
+                                             abovePrograms: programId, in: &timeline, group: group,
+                                             sourceDurations: sourceDurations, fps: fps,
+                                             style: { placement($0, slot.rect) }) {
+                        outcome.overlayClipIds.append(id)
+                    }
+                }
+
                 withTrack(&timeline, id: programId) { track in
                     split(track: &track, at: target.lowerBound)
                     split(track: &track, at: target.upperBound)
@@ -64,8 +82,13 @@ enum MulticamEngine {
                             && track.clips[i].crop == Crop()
                         rewrite(&track.clips[i], group: group, to: entry.member,
                                 sourceDurations: sourceDurations, fps: fps)
-                        if wasDefaultFit {
+                        if entry.layout != .full, let programRect {
+                            let placed = placement(track.clips[i], programRect)
+                            track.clips[i].transform = placed.transform
+                            track.clips[i].crop = placed.crop
+                        } else if wasDefaultFit || hadLayout {
                             track.clips[i].transform = fitTransform(track.clips[i])
+                            if hadLayout { track.clips[i].crop = Crop() }
                         }
                         outcome.switched += 1
                     }
@@ -116,9 +139,67 @@ enum MulticamEngine {
         return (clamped, clamped == wanted ? nil : target.angleLabel)
     }
 
+    private static func placeOverlay(
+        _ member: MulticamSource.Member,
+        over range: Range<Int>,
+        anchor: Clip,
+        anchorMember: MulticamSource.Member,
+        abovePrograms programId: String,
+        in timeline: inout Timeline,
+        group: MulticamSource,
+        sourceDurations: [String: Double],
+        fps: Int,
+        style: (Clip) -> (transform: Transform, crop: Crop)
+    ) -> String? {
+        var clip = Clip(mediaRef: member.mediaRef, startFrame: range.lowerBound, durationFrames: range.count)
+        clip.multicamGroupId = group.id
+        let groupFrame = range.lowerBound - anchorMember.anchorFrame(of: anchor, fps: fps)
+        clip.trimStartFrame = groupFrame - member.offsetFrames(fps: fps)
+        if let duration = sourceDurations[member.mediaRef] {
+            let sourceLen = Int((duration * Double(fps)).rounded())
+            clip.trimEndFrame = max(0, sourceLen - clip.trimStartFrame - clip.sourceFramesConsumed)
+        }
+        let placed = style(clip)
+        clip.transform = placed.transform
+        clip.crop = placed.crop
+
+        guard let programIdx = timeline.tracks.firstIndex(where: { $0.id == programId }) else { return nil }
+        let free = timeline.tracks[..<programIdx].lastIndex { track in
+            track.type == .video && !track.clips.contains { $0.overlaps(range) }
+        }
+        let idx = free ?? {
+            timeline.tracks.insert(Track(type: .video), at: programIdx)
+            return programIdx
+        }()
+        timeline.tracks[idx].clips.append(clip)
+        timeline.tracks[idx].clips.sort { $0.startFrame < $1.startFrame }
+        return clip.id
+    }
+
+    @discardableResult
+    private static func clearOverlays(
+        over range: Range<Int>, abovePrograms programId: String,
+        in timeline: inout Timeline, groupId: String
+    ) -> Int {
+        guard let programIdx = timeline.tracks.firstIndex(where: { $0.id == programId }) else { return 0 }
+        var removed = 0
+        for trackId in timeline.tracks[..<programIdx].map(\.id) {
+            withTrack(&timeline, id: trackId) { track in
+                split(track: &track, at: range.lowerBound, onlyGroup: groupId)
+                split(track: &track, at: range.upperBound, onlyGroup: groupId)
+                let before = track.clips.count
+                track.clips.removeAll {
+                    $0.multicamGroupId == groupId && $0.startFrame >= range.lowerBound && $0.endFrame <= range.upperBound
+                }
+                removed += before - track.clips.count
+            }
+        }
+        return removed
+    }
+
     // MARK: - Clip surgery
 
-    private static func rewrite(
+    static func rewrite(
         _ clip: inout Clip,
         group: MulticamSource,
         to member: MulticamSource.Member,
@@ -139,9 +220,9 @@ enum MulticamEngine {
     }
 
     @discardableResult
-    private static func split(track: inout Track, at frame: Int) -> Bool {
+    private static func split(track: inout Track, at frame: Int, onlyGroup groupId: String? = nil) -> Bool {
         guard let i = track.clips.firstIndex(where: {
-            frame > $0.startFrame && frame < $0.endFrame
+            frame > $0.startFrame && frame < $0.endFrame && (groupId == nil || $0.multicamGroupId == groupId)
         }), let (left, right) = EditorViewModel.splitValues(of: track.clips[i], atFrame: frame) else { return false }
         track.clips[i] = left
         track.clips.insert(right, at: i + 1)

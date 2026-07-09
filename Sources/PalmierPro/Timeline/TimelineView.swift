@@ -1013,6 +1013,9 @@ final class TimelineView: NSView {
                 if let item = switchAngleItem(group: group, clip: clip) {
                     multicamItems.append(item)
                 }
+                if group.angles.count >= 2 {
+                    multicamItems.append(layoutItem(clip: clip))
+                }
             }
             let ungroupItem = NSMenuItem(title: "Ungroup Multicam", action: #selector(performUngroupMulticam(_:)), keyEquivalent: "")
             ungroupItem.target = self
@@ -1079,6 +1082,20 @@ final class TimelineView: NSView {
             submenu.addItem(item)
         }
         let parent = NSMenuItem(title: "Switch Angle", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
+    }
+
+    private func layoutItem(clip: Clip) -> NSMenuItem {
+        let submenu = NSMenu()
+        for layout in VideoLayout.allCases {
+            let item = NSMenuItem(title: layout.displayName, action: #selector(performApplyMulticamLayout(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = ["clipId": clip.id, "layout": layout.rawValue] as [String: Any]
+            submenu.addItem(item)
+            if layout == .full { submenu.addItem(.separator()) }
+        }
+        let parent = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
         parent.submenu = submenu
         return parent
     }
@@ -1247,6 +1264,15 @@ final class TimelineView: NSView {
               let clipId = info["clipId"] as? String,
               let angle = info["angle"] as? String else { return }
         editor.switchMulticamSegment(clipId: clipId, to: angle)
+        needsDisplay = true
+    }
+
+    @objc private func performApplyMulticamLayout(_ sender: Any?) {
+        guard let info = (sender as? NSMenuItem)?.representedObject as? [String: Any],
+              let clipId = info["clipId"] as? String,
+              let raw = info["layout"] as? String,
+              let layout = VideoLayout(rawValue: raw) else { return }
+        editor.applyMulticamLayout(clipId: clipId, layout: layout)
         needsDisplay = true
     }
 
