@@ -21,8 +21,10 @@ extension ToolExecutor {
         }
         dict["currentFrame"] = editor.currentFrame
         dict["canGenerate"] = Self.canGenerate
-        if !editor.multicamGroups.isEmpty {
-            dict["multicamGroups"] = editor.multicamGroups.map { g -> [String: Any] in
+        let liveGroupIds = editor.referencedMulticamGroupIds()
+        let liveGroups = editor.multicamGroups.filter { liveGroupIds.contains($0.id) }
+        if !liveGroups.isEmpty {
+            dict["multicamGroups"] = liveGroups.map { g -> [String: Any] in
                 ["groupId": g.id, "name": g.name,
                  "angles": g.angles.map(\.angleLabel), "mics": g.mics.map(\.angleLabel)]
             }
