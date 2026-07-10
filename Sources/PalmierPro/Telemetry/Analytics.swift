@@ -69,10 +69,7 @@ enum Analytics {
 
     static func identifyUser(id: String?, properties: Payload = [:]) {
         guard didStart, isEnabled else { return }
-        guard let id, !id.isEmpty else {
-            PostHogSDK.shared.reset()
-            return
-        }
+        guard let id, !id.isEmpty else { return }
         let userProperties = cleanedCustomPayload(properties)
         PostHogSDK.shared.identify(id, userProperties: userProperties.isEmpty ? nil : userProperties)
     }
