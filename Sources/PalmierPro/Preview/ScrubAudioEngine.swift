@@ -69,6 +69,7 @@ final class ScrubAudioEngine {
         cache = nil
         source = asset.map { Source(asset: $0, audioMix: audioMix, generation: sourceGeneration) }
         if resetMeter { meter.reset() }
+        if asset != nil { startEngineIfNeeded() }
     }
 
     func scrub(to time: CMTime) {
@@ -258,7 +259,8 @@ final class ScrubAudioEngine {
         return min(fadeIn, fadeOut)
     }
 
-    nonisolated private static func decodeWindow(
+    @concurrent
+    private static func decodeWindow(
         source: Source,
         startSample: Int64,
         frameCount: Int

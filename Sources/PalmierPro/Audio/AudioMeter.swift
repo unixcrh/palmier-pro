@@ -1,6 +1,7 @@
 import Accelerate
 import AVFoundation
 import Foundation
+import Observation
 
 struct AudioMeterAnalysis: Sendable, Equatable {
     let leftPeak, rightPeak: Float
@@ -61,6 +62,7 @@ struct AudioMeterChannelState: Sendable {
     }
 }
 
+@Observable
 @MainActor
 final class AudioMeterHub {
     private var left = AudioMeterChannelState()

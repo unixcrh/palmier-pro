@@ -89,7 +89,7 @@ enum AppTheme {
         static let refreshInterval: Double = 1.0 / 30.0
         static let rulerStepDb: Float = 6
         static let rulerMajorStepDb: Float = 12
-        static let yellowThresholdDb: Float = -12
+        static let yellowThresholdDb: Float = -20
         static let redThresholdDb: Float = -6
 
         static let greenSegment = Color(red: 0.08, green: 0.78, blue: 0.22)
