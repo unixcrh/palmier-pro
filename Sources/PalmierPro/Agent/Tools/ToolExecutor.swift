@@ -37,8 +37,8 @@ final class ToolExecutor {
 
         // project tools act on AppState before editor is available
         switch tool {
-        case .getProjects, .openProject, .newProject, .closeProject:
-            let result = await runProjectTool(tool, args)
+        case .manageProject:
+            let result = await manageProject(args)
             captureToolAnalytics(
                 toolName: tool.rawValue,
                 source: source,
@@ -193,8 +193,8 @@ final class ToolExecutor {
         case .createTimeline:     return try createTimeline(editor, args)
         case .setActiveTimeline:  return try setActiveTimeline(editor, args)
         case .readSkill:     return readSkill(args)
-        case .getProjects, .openProject, .newProject, .closeProject:
-            return await runProjectTool(tool, args)
+        case .manageProject:
+            return await manageProject(args)
         }
     }
 
@@ -279,7 +279,8 @@ private extension Duration {
 func validateUnknownKeys(_ entry: [String: Any], allowed: Set<String>, path: String) throws {
     let unknown = Set(entry.keys).subtracting(allowed)
     guard unknown.isEmpty else {
-        throw ToolError("\(path): unknown field(s) '\(unknown.sorted().joined(separator: "', '"))'. Allowed: \(allowed.sorted().joined(separator: ", ")).")
+        let allowedFields = allowed.isEmpty ? "none" : allowed.sorted().joined(separator: ", ")
+        throw ToolError("\(path): unknown field(s) '\(unknown.sorted().joined(separator: "', '"))'. Allowed: \(allowedFields).")
     }
 }
 

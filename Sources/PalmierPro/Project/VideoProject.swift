@@ -138,6 +138,21 @@ final class VideoProject: NSDocument {
         super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)
     }
 
+    @MainActor
+    func saveBeforeClosing() async throws {
+        guard let url = fileURL else { throw CocoaError(.fileNoSuchFile) }
+        // Edit flags are unreliable while an asynchronous autosave is in flight.
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            save(to: url, ofType: Self.typeIdentifier, for: .saveOperation) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
     override func write(to url: URL, ofType typeName: String) throws {
         if !snapshotPreparedForWrite {
             guard Thread.isMainThread else {
