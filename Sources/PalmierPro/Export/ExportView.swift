@@ -332,7 +332,7 @@ struct ExportView: View {
     }
 
     private var exportLogJobs: [ExportJob] {
-        projectJobs.sorted { $0.createdAt > $1.createdAt }
+        Array(projectJobs.reversed())
     }
 
     private func exportLogRow(_ job: ExportJob) -> some View {

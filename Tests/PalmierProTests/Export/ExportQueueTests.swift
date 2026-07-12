@@ -78,13 +78,15 @@ struct ExportQueueTests {
         #expect(firstEditor.exportQueueProjectID == secondEditor.exportQueueProjectID)
     }
 
-    @Test func lateCancellationKeepsCommittedExportCompleted() async throws {
+    @Test func lateProgressAndCancellationKeepCommittedExportCompleted() async throws {
         let queue = ExportQueue()
         let outputURL = temporaryURL("late-cancel.xml")
         defer { try? FileManager.default.removeItem(at: outputURL) }
         var jobID: UUID!
         var cancellationAccepted: Bool?
+        var progressUpdate: ((Double) -> Void)?
         let submission = try queue.enqueueForTesting(outputURL: outputURL) { service in
+            progressUpdate = service.onProgressChange
             await service.export(
                 timeline: Fixtures.timeline(),
                 resolver: MediaResolver(manifest: { MediaManifest() }, projectURL: { nil }),
@@ -99,6 +101,8 @@ struct ExportQueueTests {
         #expect(await waitUntil { queue.job(jobID)?.status.isFinished == true })
         #expect(cancellationAccepted == false)
         #expect(queue.job(jobID)?.status == .completed)
+        progressUpdate?(0.25)
+        #expect(queue.job(jobID)?.progress == 1)
     }
 
     private func enqueue(

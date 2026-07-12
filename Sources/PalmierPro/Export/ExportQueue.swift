@@ -193,7 +193,6 @@ final class ExportQueue {
         projectID: String,
         source: ExportJobSource,
         warnings: [String] = [],
-        palmierReport: PalmierProjectExporter.Report? = nil,
         operation: @escaping Operation
     ) throws -> ExportQueueSubmission {
         guard !isDestinationReserved(outputURL) else {
@@ -211,7 +210,7 @@ final class ExportQueue {
             status: .waiting,
             progress: 0,
             warnings: warnings,
-            palmierReport: palmierReport
+            palmierReport: nil
         ))
         operations[id] = operation
         startNext()
@@ -292,7 +291,9 @@ final class ExportQueue {
     }
 
     private func update(_ progress: Double, for id: UUID) {
-        guard let index = jobs.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = jobs.firstIndex(where: { $0.id == id }),
+              jobs[index].status.isPending
+        else { return }
         jobs[index].progress = min(1, max(0, progress))
     }
 
