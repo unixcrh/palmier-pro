@@ -170,6 +170,7 @@ final class EditorViewModel {
         }
     }
     private(set) var projectId: String?
+    let exportQueueProjectID = UUID().uuidString
     // Placeholder replaced in init() — @Observable doesn't support lazy var
     private(set) var mediaResolver: MediaResolver = MediaResolver(
         manifest: { MediaManifest() }, projectURL: { nil }
