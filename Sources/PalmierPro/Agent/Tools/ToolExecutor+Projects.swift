@@ -75,10 +75,10 @@ extension ToolExecutor {
 
     private func createProject(_ args: [String: Any]) async throws -> ToolResult {
         try validateUnknownKeys(args, allowed: ["name", "fps", "aspectRatio", "quality"], path: "manage_project action='create'")
-        if args.keys.contains("name"), args.string("name") == nil {
+        if let name = args["name"], !(name is String) {
             throw ToolError("manage_project action='create': 'name' must be a string.")
         }
-        let name = args.string("name") ?? Project.defaultProjectName
+        let name = args["name"] as? String ?? Project.defaultProjectName
         let settingsArgs = args.filter { ["fps", "aspectRatio", "quality"].contains($0.key) }
         let settings = try settingsArgs.isEmpty ? nil : validateProjectSettings(settingsArgs)
         let doc = try await AppState.shared.createProject(named: name)

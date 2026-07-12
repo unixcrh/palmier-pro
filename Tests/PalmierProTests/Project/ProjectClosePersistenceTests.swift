@@ -14,9 +14,13 @@ struct ProjectClosePersistenceTests {
         document.fileURL = package
         document.fileType = VideoProject.typeIdentifier
         document.editorViewModel.timeline = Fixtures.timeline(tracks: [
-            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 90)]),
+            Fixtures.videoTrack(clips: [Fixtures.clip(start: 0, duration: 30)]),
         ])
 
+        document.save(to: package, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
+            if let error { Issue.record(error) }
+        }
+        document.editorViewModel.timeline.tracks[0].clips[0].durationFrames = 90
         #expect(!document.isDocumentEdited)
         try await document.saveBeforeClosing()
 
