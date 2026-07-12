@@ -139,6 +139,76 @@ struct ExportProjectToolTests {
         #expect(try String(contentsOf: xmlURL, encoding: .utf8).contains("<xmeml version=\"4\">"))
     }
 
+    @Test func managesCurrentProjectExports() async throws {
+        let h = ToolHarness()
+        let projectID = h.editor.exportQueueProjectID
+        let active = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("active"),
+            projectID: projectID
+        ) { _ in
+            try? await Task.sleep(for: .seconds(30))
+        }
+        let waiting = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("waiting"),
+            projectID: projectID
+        ) { _ in }
+        let other = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("other"),
+            projectID: "another-project"
+        ) { _ in }
+
+        let listed = try await h.runOK("manage_exports", args: ["action": "list"]) as? [String: Any]
+        let exports = try #require(listed?["exports"] as? [[String: Any]])
+        #expect(exports.map { $0["jobId"] as? String } == [waiting.jobID.uuidString, active.jobID.uuidString])
+        #expect(exports.first?["status"] as? String == "queued")
+        #expect(exports.first?["queuePosition"] as? Int == 1)
+
+        let removed = try await h.runOK("manage_exports", args: [
+            "action": "cancel", "jobId": waiting.jobID.uuidString,
+        ]) as? [String: Any]
+        #expect(removed?["status"] as? String == "removed")
+        #expect(removed?["cancellationRequested"] as? Bool == true)
+        #expect(h.exportQueue.jobs.first(where: { $0.id == waiting.jobID })?.status == .canceled)
+
+        let canceling = try await h.runOK("manage_exports", args: [
+            "action": "cancel", "jobId": active.jobID.uuidString,
+        ]) as? [String: Any]
+        #expect(canceling?["status"] as? String == "canceling")
+        #expect(canceling?["cancellationRequested"] as? Bool == true)
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < deadline,
+              h.exportQueue.jobs.first(where: { $0.id == active.jobID })?.status != .canceled {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(h.exportQueue.jobs.first(where: { $0.id == active.jobID })?.status == .canceled)
+        h.exportQueue.cancel(other.jobID)
+    }
+
+    @Test func validatesExportManagementRequests() async throws {
+        let h = ToolHarness()
+        let other = try h.exportQueue.enqueueForTesting(
+            outputURL: temporaryExportURL("other-project"),
+            projectID: "another-project"
+        ) { _ in
+            try? await Task.sleep(for: .seconds(30))
+        }
+
+        for args in [
+            [:],
+            ["action": "pause"],
+            ["action": "cancel"],
+            ["action": "cancel", "jobId": other.jobID.uuidString],
+        ] as [[String: Any]] {
+            #expect(await h.runRaw("manage_exports", args: args).isError)
+        }
+        h.exportQueue.cancel(other.jobID)
+    }
+
+    private func temporaryExportURL(_ name: String) -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("manage-exports-\(name)-\(UUID().uuidString).mov")
+    }
+
     private func waitForJob(from result: [String: Any]?, in queue: ExportQueue) async throws {
         let rawID = try #require(result?["jobId"] as? String)
         let id = try #require(UUID(uuidString: rawID))

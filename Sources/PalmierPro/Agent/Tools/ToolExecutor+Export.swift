@@ -1,6 +1,70 @@
 import Foundation
 
 extension ToolExecutor {
+    func manageExports(_ editor: EditorViewModel, _ args: [String: Any]) throws -> ToolResult {
+        let input: ManageExportsArgs = try decodeToolArgs(args, path: "manage_exports")
+        let projectJobs = exportQueue.jobs(for: editor.exportQueueProjectID)
+
+        switch input.action {
+        case "list":
+            guard input.jobId == nil else {
+                throw ToolError("manage_exports: jobId only applies to cancel")
+            }
+            let waitingIDs = exportQueue.jobs.filter { $0.status == .waiting }.map(\.id)
+            let exports = projectJobs.reversed().map { job -> [String: Any] in
+                var row: [String: Any] = [
+                    "jobId": job.id.uuidString,
+                    "filename": job.filename,
+                    "path": job.outputURL.path,
+                    "status": job.status.toolName,
+                    "progress": Int((job.progress * 100).rounded()),
+                ]
+                if let index = waitingIDs.firstIndex(of: job.id) {
+                    row["queuePosition"] = index + 1
+                }
+                if let error = job.error {
+                    row["error"] = error
+                }
+                return row
+            }
+            return try jsonResult(["exports": Array(exports)], tool: "manage_exports")
+        case "cancel":
+            guard let rawID = input.jobId, let id = UUID(uuidString: rawID) else {
+                throw ToolError("manage_exports: cancel requires a valid jobId")
+            }
+            guard let job = projectJobs.first(where: { $0.id == id }) else {
+                throw ToolError("manage_exports: export not found in the current project")
+            }
+
+            let responseStatus: String
+            let cancellationRequested: Bool
+            switch job.status {
+            case .waiting:
+                exportQueue.cancel(id)
+                responseStatus = "removed"
+                cancellationRequested = true
+            case .preparing, .exporting:
+                exportQueue.cancel(id)
+                responseStatus = "canceling"
+                cancellationRequested = true
+            case .canceling:
+                responseStatus = "canceling"
+                cancellationRequested = true
+            case .completed, .failed, .canceled:
+                responseStatus = job.status.toolName
+                cancellationRequested = false
+            }
+            return try jsonResult([
+                "jobId": job.id.uuidString,
+                "filename": job.filename,
+                "status": responseStatus,
+                "cancellationRequested": cancellationRequested,
+            ], tool: "manage_exports")
+        default:
+            throw ToolError("manage_exports: action must be list or cancel")
+        }
+    }
+
     func exportProject(_ editor: EditorViewModel, _ args: [String: Any]) async throws -> ToolResult {
         let input: ExportProjectArgs = try decodeToolArgs(args, path: "export_project")
         let mode = try ExportProjectMode(named: input.mode)
@@ -213,11 +277,32 @@ extension ToolExecutor {
         }
     }
 
-    private func jsonResult(_ payload: [String: Any]) throws -> ToolResult {
+    private func jsonResult(_ payload: [String: Any], tool: String = "export_project") throws -> ToolResult {
         guard let json = Self.jsonString(payload) else {
-            throw ToolError("export_project: failed to encode export report")
+            throw ToolError("\(tool): failed to encode export report")
         }
         return .ok(json)
+    }
+}
+
+private struct ManageExportsArgs: DecodableToolArgs {
+    static let allowedKeys: Set<String> = ["action", "jobId"]
+
+    let action: String
+    var jobId: String?
+}
+
+private extension ExportJobStatus {
+    var toolName: String {
+        switch self {
+        case .waiting: "queued"
+        case .preparing: "preparing"
+        case .exporting: "rendering"
+        case .canceling: "canceling"
+        case .completed: "completed"
+        case .failed: "failed"
+        case .canceled: "canceled"
+        }
     }
 }
 
