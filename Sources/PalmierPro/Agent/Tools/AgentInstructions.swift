@@ -72,8 +72,8 @@ enum AgentInstructions {
         - export_project modes: video (default — H.264/H.265/ProRes, 720p–4K or Match \
           Timeline), xml (Premiere), fcpxml (Resolve / Final Cut), palmier (self-contained \
           package). Omit outputPath unless the user named a destination (default \
-          ~/Downloads). Video renders in the background — say so; a notification reports \
-          completion. The other modes finish inline.
+          ~/Downloads). Every mode is queued in the background. Report whether it started or \
+          is waiting; progress and cancellation are available in the Export dialog.
 
         # Generation
         - Costs real money and is not undoable: propose prompt, model, duration, and aspect \

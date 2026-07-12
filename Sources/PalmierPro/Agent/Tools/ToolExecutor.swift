@@ -7,14 +7,17 @@ struct ToolError: Error { let message: String; init(_ m: String) { self.message 
 @MainActor
 final class ToolExecutor {
     private let editorProvider: () -> EditorViewModel?
+    let exportQueue: ExportQueue
     var editor: EditorViewModel? { editorProvider() }
 
-    init(editor: EditorViewModel) {
+    init(editor: EditorViewModel, exportQueue: ExportQueue = .shared) {
         self.editorProvider = { [weak editor] in editor }
+        self.exportQueue = exportQueue
     }
 
-    init(editorProvider: @escaping () -> EditorViewModel?) {
+    init(editorProvider: @escaping () -> EditorViewModel?, exportQueue: ExportQueue = .shared) {
         self.editorProvider = editorProvider
+        self.exportQueue = exportQueue
     }
 
     private var agentUndoStack: [String] = []
