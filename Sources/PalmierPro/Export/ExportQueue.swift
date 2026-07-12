@@ -236,6 +236,10 @@ final class ExportQueue {
         guard activeID == id, let operation = operations[id] else { return }
         let service = ExportService()
         activeService = service
+        guard !Task.isCancelled else {
+            finish(id, status: .canceled, service: service)
+            return
+        }
         service.onPhaseChange = { [weak self] phase in self?.update(phase, for: id) }
         service.onProgressChange = { [weak self] progress in self?.update(progress, for: id) }
 
@@ -249,7 +253,8 @@ final class ExportQueue {
         } else if service.error != nil {
             status = .failed
         } else {
-            status = .completed
+            service.error = "Export produced no output."
+            status = .failed
         }
         let source = job(id)?.source
         let filename = job(id)?.filename

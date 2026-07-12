@@ -25,10 +25,12 @@ struct ExportQueueTests {
         #expect(events == ["first-start", "first-finish", "second-start", "second-finish"])
     }
 
-    @Test func cancelingActiveJobAdvancesQueue() async throws {
+    @Test func cancelingPreparingJobAdvancesQueueWithoutRunningIt() async throws {
         let queue = ExportQueue()
+        var firstRan = false
         var secondRan = false
         let first = try enqueue(queue, "active.mov") { _ in
+            firstRan = true
             try? await Task.sleep(for: .seconds(30))
         }
         let second = try enqueue(queue, "next.mov") { _ in secondRan = true }
@@ -36,9 +38,11 @@ struct ExportQueueTests {
         queue.cancel(first.jobID)
 
         #expect(await waitUntil {
-            queue.job(first.jobID)?.status == .canceled && queue.job(second.jobID)?.status == .completed
+            queue.job(first.jobID)?.status == .canceled && queue.job(second.jobID)?.status == .failed
         })
+        #expect(!firstRan)
         #expect(secondRan)
+        #expect(queue.job(second.jobID)?.error == "Export produced no output.")
     }
 
     @Test func cancelingWaitingJobDoesNotRunIt() async throws {
