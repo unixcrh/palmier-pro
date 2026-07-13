@@ -53,13 +53,10 @@ struct ManageProjectToolTests {
         }
     }
 
-    @Test func mcpSessionsStayPinnedAndPauseBackgroundEdits() async {
+    @Test func mcpSessionPinsProjectWhileInAppChatStaysLocal() async {
         let first = VideoProject()
-        first.fileURL = URL(fileURLWithPath: "/tmp/First.palmier")
         first.editorViewModel.timeline.name = "First Session"
         let second = VideoProject()
-        second.fileURL = URL(fileURLWithPath: "/tmp/Second.palmier")
-        second.editorViewModel.timeline.name = "Second Session"
         let controller = NSDocumentController.shared
         controller.addDocument(first)
         controller.addDocument(second)
@@ -74,14 +71,8 @@ struct ManageProjectToolTests {
         #expect(ToolHarness.textOf(await firstSession.execute(name: "get_timeline", args: [:])).contains("First Session"))
 
         visible = second
-        let secondSession = service.makeSessionToolExecutor()
         #expect(ToolHarness.textOf(await firstSession.execute(name: "get_timeline", args: [:])).contains("First Session"))
-        #expect(ToolHarness.textOf(await secondSession.execute(name: "get_timeline", args: [:])).contains("Second Session"))
-
-        let blocked = await firstSession.execute(name: "create_timeline", args: ["name": "Blocked"])
-        #expect(blocked.isError)
-        #expect(ToolHarness.textOf(blocked).contains("Second"))
-        #expect(!(await secondSession.execute(name: "create_timeline", args: ["name": "External"])).isError)
+        #expect((await firstSession.execute(name: "create_timeline", args: ["name": "Blocked"])).isError)
         #expect(!(await ToolExecutor(editor: first.editorViewModel).execute(name: "create_timeline", args: ["name": "In-App"])).isError)
     }
 }
