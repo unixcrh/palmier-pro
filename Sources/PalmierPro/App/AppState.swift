@@ -93,12 +93,11 @@ final class AppState {
         project.showWindows()
     }
 
-    // Save and close project; switch to next open or show Home. Throws (without closing) if the save fails.
     func closeProject(_ project: VideoProject) async throws {
         if let url = project.fileURL { ProjectRegistry.shared.register(url) }
-        if project.isDocumentEdited {
+        if let url = project.fileURL {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                project.autosave(withImplicitCancellability: false) { error in
+                project.save(to: url, ofType: VideoProject.typeIdentifier, for: .saveOperation) { error in
                     if let error { cont.resume(throwing: error) } else { cont.resume() }
                 }
             }

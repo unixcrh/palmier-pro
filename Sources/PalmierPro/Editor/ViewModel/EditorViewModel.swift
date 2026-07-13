@@ -291,6 +291,7 @@ final class EditorViewModel {
 
     weak var undoManager: UndoManager?
     @ObservationIgnored var onProjectCheckpointRequired: (() -> Void)?
+    @ObservationIgnored var onDocumentEdited: (() -> Void)?
     var isDocumentEdited: Bool = false
 
     func telemetrySnapshot() -> [String: Any] {

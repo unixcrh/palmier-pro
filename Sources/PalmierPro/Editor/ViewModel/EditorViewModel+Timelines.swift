@@ -108,6 +108,10 @@ extension EditorViewModel {
             }
             handler(vm)
         }
+        let undoing = undoManager?.isUndoing == true || undoManager?.isRedoing == true
+        if !undoing {
+            onDocumentEdited?()
+        }
     }
 
     // MARK: - CRUD
@@ -222,6 +226,10 @@ extension EditorViewModel {
             vm.deleteTimeline(id)
         }
         undoManager?.setActionName(actionName)
+        let undoing = undoManager?.isUndoing == true || undoManager?.isRedoing == true
+        if !undoing {
+            onDocumentEdited?()
+        }
     }
 
     /// Removes every clip referencing `assetIds` from every timeline; prunes emptied tracks.

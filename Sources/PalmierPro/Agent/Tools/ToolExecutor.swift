@@ -80,6 +80,9 @@ final class ToolExecutor {
                let actionName = editor.undoManager?.undoActionName {
                 agentUndoStack.append(actionName)
             }
+            if !result.isError, tool != .undo, editor.timelines != before {
+                editor.onDocumentEdited?()
+            }
         } catch let err as ToolError {
             result = .error(err.message)
         } catch {

@@ -298,6 +298,7 @@ final class VideoProject: NSDocument {
             guard let self else { return }
             self.projectCheckpointAutosaveScheduled = false
             guard self.fileURL != nil else { return }
+            self.updateChangeCount(.changeDone)
             self.autosave(withImplicitCancellability: false) { error in
                 if let error {
                     Log.project.error("project checkpoint autosave failed: \(error.localizedDescription)")
@@ -347,6 +348,9 @@ final class VideoProject: NSDocument {
         editorViewModel.projectURL = fileURL
         editorViewModel.agentService.loadSessions(from: fileURL)
         editorViewModel.agentService.onSessionsChanged = { [weak self] in
+            self?.updateChangeCount(.changeDone)
+        }
+        editorViewModel.onDocumentEdited = { [weak self] in
             self?.updateChangeCount(.changeDone)
         }
         editorViewModel.onProjectCheckpointRequired = { [weak self] in
