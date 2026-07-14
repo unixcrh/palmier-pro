@@ -31,8 +31,8 @@ struct CapsuleButtonStyle: ButtonStyle {
                 : AnyShapeStyle(AppTheme.Text.secondaryColor)
         }
         private var background: AnyShapeStyle {
-            if let fill { return fill }
             guard isEnabled else { return AnyShapeStyle(AppTheme.Background.prominentColor) }
+            if let fill { return fill }
             return variant == .prominent
                 ? AnyShapeStyle(AppTheme.Accent.primary)
                 : AnyShapeStyle(AppTheme.Background.prominentColor)

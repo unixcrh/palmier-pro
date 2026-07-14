@@ -55,6 +55,13 @@ struct SkillDetailSheet: View {
             commitDraftIfDirty()
             commitTitle()
         }
+        .onExitCommand {
+            if editingTitle {
+                cancelTitleEditing()
+            } else {
+                close()
+            }
+        }
     }
 
     private func content(_ skill: Skill) -> some View {
@@ -164,11 +171,7 @@ struct SkillDetailSheet: View {
     }
 
     private var closeButton: some View {
-        Button {
-            commitDraftIfDirty()
-            commitTitle()
-            dismiss()
-        } label: {
+        Button(action: close) {
             Image(systemName: "xmark")
                 .font(.system(size: AppTheme.FontSize.md, weight: AppTheme.FontWeight.regular))
                 .foregroundStyle(AppTheme.Text.tertiaryColor)
@@ -177,7 +180,6 @@ struct SkillDetailSheet: View {
                 .hoverHighlight(cornerRadius: AppTheme.Radius.sm)
         }
         .buttonStyle(.plain)
-        .keyboardShortcut(.cancelAction)
         .accessibilityLabel("Close")
         .help("Close")
     }
@@ -205,7 +207,6 @@ struct SkillDetailSheet: View {
                         )
                 )
                 .onSubmit { commitTitle() }
-                .onExitCommand { editingTitle = false }
                 .onChange(of: titleFocused) { if !titleFocused { commitTitle() } }
         } else {
             Text(skill.name)
@@ -276,6 +277,17 @@ struct SkillDetailSheet: View {
         guard editingTitle, let skill else { return }
         editingTitle = false
         store.rename(skill, to: draftTitle)
+    }
+
+    private func cancelTitleEditing() {
+        editingTitle = false
+        draftTitle = skill?.name ?? ""
+    }
+
+    private func close() {
+        commitDraftIfDirty()
+        commitTitle()
+        dismiss()
     }
 
     private func displayPath(_ skill: Skill) -> String {
