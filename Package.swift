@@ -22,7 +22,7 @@ let package = Package(
         .package(url: "https://github.com/get-convex/convex-swift", from: "0.8.0"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.3"),
         .package(url: "https://github.com/ml-explore/mlx-swift", exact: "0.31.5"),
-        .package(url: "https://github.com/airbnb/lottie-spm", from: "4.6.1"),
+        .package(url: "https://github.com/airbnb/lottie-ios", from: "4.6.1"),
         .package(url: "https://github.com/soniqo/speech-swift", exact: "0.0.21"),
     ],
     targets: [
@@ -45,7 +45,7 @@ let package = Package(
                 .product(name: "ClerkKit", package: "clerk-ios"),
                 .product(name: "ConvexMobile", package: "convex-swift"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
-                .product(name: "Lottie", package: "lottie-spm"),
+                .product(name: "Lottie", package: "lottie-ios"),
                 .product(
                     name: "MLX",
                     package: "mlx-swift",
