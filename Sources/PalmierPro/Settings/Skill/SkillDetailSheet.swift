@@ -137,7 +137,7 @@ struct SkillDetailSheet: View {
 
                 Spacer(minLength: AppTheme.Spacing.md)
 
-                if state == .update {
+                if state == .update, !editing {
                     if isUpdating {
                         ProgressView()
                             .controlSize(.small)
@@ -249,7 +249,7 @@ struct SkillDetailSheet: View {
     }
 
     private func update(_ skill: Skill) {
-        guard let entry = catalog.entry(id: skill.id) else { return }
+        guard !editing, let entry = catalog.entry(id: skill.id) else { return }
         isUpdating = true
         Task {
             _ = await store.install(entry)
