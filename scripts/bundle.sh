@@ -47,10 +47,11 @@ ZIP="$ROOT/.build/PalmierPro.zip"
 DMG="$ROOT/.build/PalmierPro.dmg"
 
 echo "==> Building ($CONFIG)"
-BUILD_ARGS=(-c "$CONFIG")
+TRAITS="BundledSpeech"
 if [ "$CONFIG" = "release" ]; then
-  BUILD_ARGS+=(--traits ProductionTelemetry)
+  TRAITS="$TRAITS,ProductionTelemetry"
 fi
+BUILD_ARGS=(-c "$CONFIG" --traits "$TRAITS")
 swift build "${BUILD_ARGS[@]}"
 BIN="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)/PalmierPro"
 SPARKLE_FW="$ROOT/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
@@ -160,7 +161,8 @@ touch "$APP"
 if [ "$MODE" = "fast" ]; then
   echo "==> Codesigning main app with $SIGNING_IDENTITY (no timestamp, no helpers)"
   codesign --force --sign "$SIGNING_IDENTITY" "$APP"
-  echo "==> Done: $APP (fast mode — stable identity, no dSYM, no nested re-sign)"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  echo "==> Done: $APP (fast mode — stable identity, no dSYM)"
   exit 0
 fi
 
