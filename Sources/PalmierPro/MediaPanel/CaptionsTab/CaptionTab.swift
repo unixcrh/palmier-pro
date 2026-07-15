@@ -4,12 +4,14 @@ struct CaptionTab: View {
     @Environment(EditorViewModel.self) var editor
     @Bindable private var account = AccountService.shared
 
-    @State private var style: TextStyle = {
+    @State private var style: TextStyle = CaptionTab.defaultStyle
+    @State private var center = AppTheme.Caption.defaultCenter
+
+    private static var defaultStyle: TextStyle {
         var s = TextStyle(fontSize: AppTheme.Caption.defaultFontSize)
         s.shadow.enabled = false
         return s
-    }()
-    @State private var center = AppTheme.Caption.defaultCenter
+    }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
     @State private var textCase: EditorViewModel.CaptionCase = .auto
@@ -132,18 +134,23 @@ struct CaptionTab: View {
         EditorPanelGroup("Source", isExpanded: $sourceExpanded) {
             InspectorRow(
                 label: "Source",
-                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions."
+                labelHelp: "Uses selected clips when available, otherwise all captionable audio. Choose a track to limit captions.",
+                onReset: {
+                    selectedTrackId = nil
+                    selectedClipTargets = []
+                }
             ) { sourceMenu }
             InspectorRow(
                 label: "Mode",
-                labelHelp: "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities."
+                labelHelp: "Local runs with Apple's SpeechAnalyzer. Cloud uses credits and a more accurate model with more capabilities.",
+                onReset: { provider = .cloud }
             ) { providerPicker }
         }
     }
 
     private var settingsSection: some View {
         EditorPanelGroup("Settings", isExpanded: $settingsExpanded) {
-            InspectorRow(label: "Language") {
+            InspectorRow(label: "Language", onReset: { locale = nil }) {
                 Menu {
                     Button("Auto") { locale = nil }
                     if !supportedLocales.isEmpty {
@@ -156,7 +163,11 @@ struct CaptionTab: View {
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
-            InspectorRow(label: "Max words", labelHelp: "Cap the words shown per caption. None fits each line to the box.") {
+            InspectorRow(
+                label: "Max words",
+                labelHelp: "Cap the words shown per caption. None fits each line to the box.",
+                onReset: { maxWords = nil }
+            ) {
                 Menu {
                     Button("None") { maxWords = nil }
                     ForEach(1...8, id: \.self) { n in
@@ -166,7 +177,7 @@ struct CaptionTab: View {
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
             }
-            InspectorRow(label: "Censor profanity") {
+            InspectorRow(label: "Censor profanity", onReset: { censorProfanity = false }) {
                 Toggle("", isOn: $censorProfanity)
                     .labelsHidden()
                     .toggleStyle(.switch)
@@ -261,10 +272,16 @@ struct CaptionTab: View {
 
     private var styleSection: some View {
         EditorPanelGroup("Style", isExpanded: $styleExpanded) {
-            InspectorRow(label: "Font") {
+            InspectorRow(label: "Font", onReset: { style.fontName = Self.defaultStyle.fontName }) {
                 FontPickerField(current: style.fontName, onPreview: { style.fontName = $0 }, onChange: { style.fontName = $0 }, onCancel: {})
             }
-            InspectorRow(label: "Style") {
+            InspectorRow(
+                label: "Style",
+                onReset: {
+                    style.isBold = Self.defaultStyle.isBold
+                    style.isItalic = Self.defaultStyle.isItalic
+                }
+            ) {
                 TextStyleTraitButtons(
                     isBold: style.isBold,
                     isItalic: style.isItalic,
@@ -272,7 +289,7 @@ struct CaptionTab: View {
                     onItalic: { style.isItalic = $0 }
                 )
             }
-            InspectorRow(label: "Size") {
+            InspectorRow(label: "Size", onReset: { style.fontSize = Self.defaultStyle.fontSize }) {
                 ScrubbableNumberField(
                     value: style.fontSize,
                     range: AppTheme.Caption.minFontSize...AppTheme.Caption.maxFontSize,
@@ -281,10 +298,19 @@ struct CaptionTab: View {
                     onChanged: { style.fontSize = $0 }
                 ) { style.fontSize = $0 }
             }
-            InspectorRow(label: "Color") {
+            InspectorRow(label: "Tracking", onReset: { style.tracking = Self.defaultStyle.tracking }) {
+                ScrubbableNumberField(
+                    value: style.tracking,
+                    range: -20...100,
+                    format: "%.1f",
+                    valueSuffix: " pt",
+                    onChanged: { style.tracking = $0 }
+                ) { style.tracking = $0 }
+            }
+            InspectorRow(label: "Color", onReset: { style.color = Self.defaultStyle.color }) {
                 ColorField(displayColor: style.color.swiftUIColor, onUserChange: { style.color = TextStyle.RGBA($0) })
             }
-            InspectorRow(label: "Background") {
+            InspectorRow(label: "Background", onReset: { style.background = Self.defaultStyle.background }) {
                 ToggleColorControl(
                     label: "Background",
                     isOn: $style.background.enabled,
@@ -294,7 +320,7 @@ struct CaptionTab: View {
                     }
                 )
             }
-            InspectorRow(label: "Outline") {
+            InspectorRow(label: "Outline", onReset: { style.border = Self.defaultStyle.border }) {
                 ToggleColorControl(
                     label: "Outline",
                     isOn: $style.border.enabled,
@@ -304,7 +330,7 @@ struct CaptionTab: View {
                     }
                 )
             }
-            InspectorRow(label: "Case") {
+            InspectorRow(label: "Case", onReset: { textCase = .auto }) {
                 Menu {
                     ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in
                         Button(c.label) { textCase = c }
@@ -322,7 +348,11 @@ struct CaptionTab: View {
         EditorPanelGroup("Animation", isExpanded: $animationExpanded) {
             CaptionPresetGallery(selection: $animationPreset, highlight: animationHighlight)
             if animationPreset.usesHighlight {
-                InspectorRow(label: "Highlight", labelHelp: "Color for the active word.") {
+                InspectorRow(
+                    label: "Highlight",
+                    labelHelp: "Color for the active word.",
+                    onReset: { animationHighlight = TextAnimation.defaultHighlight }
+                ) {
                     ColorField(displayColor: animationHighlight.swiftUIColor, onUserChange: { animationHighlight = TextStyle.RGBA($0) })
                 }
             }

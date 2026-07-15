@@ -900,9 +900,8 @@ enum FCPXMLExporter {
                 ("alignment", style.alignment.rawValue),
             ]
             if style.border.enabled {
-                // glyphBorderStrokeWidth is NSAttributedString's percent-of-font-size convention.
                 attrs.append(("strokeColor", colorString(style.border.color)))
-                attrs.append(("strokeWidth", formatNumber(abs(TextStyle.glyphBorderStrokeWidth) / 100 * fontSize)))
+                attrs.append(("strokeWidth", formatNumber(max(0, style.border.width))))
             }
             return attrs
         }
