@@ -14,7 +14,6 @@ struct CaptionTab: View {
     }
     @State private var selectedTrackId: String?
     @State private var selectedClipTargets: [String] = []
-    @State private var textCase: EditorViewModel.CaptionCase = .auto
     @State private var provider: TranscriptionProvider = .cloud
     @State private var animationPreset: TextAnimation.Preset = .none
     @State private var animationHighlight: TextStyle.RGBA = TextAnimation.defaultHighlight
@@ -307,6 +306,15 @@ struct CaptionTab: View {
                     onChanged: { style.tracking = $0 }
                 ) { style.tracking = $0 }
             }
+            InspectorRow(label: "Line Spacing", onReset: { style.lineSpacing = Self.defaultStyle.lineSpacing }) {
+                ScrubbableNumberField(
+                    value: style.lineSpacing,
+                    range: -100...300,
+                    format: "%.1f",
+                    valueSuffix: " pt",
+                    onChanged: { style.lineSpacing = $0 }
+                ) { style.lineSpacing = $0 }
+            }
             InspectorRow(label: "Color", onReset: { style.color = Self.defaultStyle.color }) {
                 ColorField(displayColor: style.color.swiftUIColor, onUserChange: { style.color = TextStyle.RGBA($0) })
             }
@@ -330,13 +338,13 @@ struct CaptionTab: View {
                     }
                 )
             }
-            InspectorRow(label: "Case", onReset: { textCase = .auto }) {
+            InspectorRow(label: "Font Case", onReset: { style.fontCase = Self.defaultStyle.fontCase }) {
                 Menu {
-                    ForEach(EditorViewModel.CaptionCase.allCases, id: \.self) { c in
-                        Button(c.label) { textCase = c }
+                    ForEach(TextStyle.FontCase.allCases, id: \.self) { fontCase in
+                        Button(fontCase.label) { style.fontCase = fontCase }
                     }
                 } label: {
-                    EditorMenuValue(text: textCase.label)
+                    EditorMenuValue(text: style.fontCase.label)
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).focusable(false)
                 .frame(maxWidth: .infinity)
@@ -499,7 +507,6 @@ struct CaptionTab: View {
             autoDetect: isAutoSource,
             style: style,
             center: center,
-            textCase: textCase,
             censorProfanity: provider == .local && censorProfanity,
             locale: locale,
             maxWords: maxWords,

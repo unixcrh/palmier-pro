@@ -194,6 +194,8 @@ struct ProjectRoundTripTests {
         let style = try JSONDecoder().decode(TextStyle.self, from: Data(json.utf8))
         #expect(style.fontScale == 1.0)
         #expect(style.tracking == 0)
+        #expect(style.lineSpacing == 0)
+        #expect(style.fontCase == .mixed)
     }
 
     @Test func textStyleLegacyDecorationsPickUpAdjustableDefaults() throws {
@@ -224,6 +226,8 @@ struct ProjectRoundTripTests {
     @Test func textStyleDecorationAdjustmentsRoundTrip() throws {
         var style = TextStyle()
         style.tracking = 8
+        style.lineSpacing = 18
+        style.fontCase = .uppercase
         style.border = .init(enabled: true, color: .init(r: 1, g: 0, b: 0, a: 1), width: 9)
         style.shadow = .init(
             enabled: true,

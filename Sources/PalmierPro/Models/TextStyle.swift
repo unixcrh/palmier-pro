@@ -7,6 +7,8 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     var fontSize: Double = 96
     var fontScale: Double = 1.0
     var tracking: Double = 0
+    var lineSpacing: Double = 0
+    var fontCase: FontCase = .mixed
     var isBold: Bool = true
     var isItalic: Bool = false
     var color: RGBA = RGBA()
@@ -19,6 +21,28 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
         case left
         case center
         case right
+    }
+
+    enum FontCase: String, Codable, Sendable, CaseIterable, Hashable {
+        case mixed
+        case uppercase
+        case lowercase
+
+        var label: String {
+            switch self {
+            case .mixed: "Mixed"
+            case .uppercase: "UPPERCASE"
+            case .lowercase: "lowercase"
+            }
+        }
+
+        func apply(to text: String) -> String {
+            switch self {
+            case .mixed: text
+            case .uppercase: text.uppercased()
+            case .lowercase: text.lowercased()
+            }
+        }
     }
 
     struct RGBA: Codable, Sendable, Equatable, Hashable {
@@ -116,7 +140,8 @@ struct TextStyle: Codable, Sendable, Equatable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case fontName, fontSize, fontScale, tracking, isBold, isItalic, color, alignment, shadow, background, border
+        case fontName, fontSize, fontScale, tracking, lineSpacing, fontCase
+        case isBold, isItalic, color, alignment, shadow, background, border
     }
 }
 
@@ -132,6 +157,8 @@ extension TextStyle {
             fontSize: fontSize,
             fontScale: (try? c.decode(Double.self, forKey: .fontScale)) ?? 1.0,
             tracking: (try? c.decode(Double.self, forKey: .tracking)) ?? 0,
+            lineSpacing: (try? c.decode(Double.self, forKey: .lineSpacing)) ?? 0,
+            fontCase: (try? c.decode(FontCase.self, forKey: .fontCase)) ?? .mixed,
             isBold: (try? c.decode(Bool.self, forKey: .isBold)) ?? inferredTraits.contains(.traitBold),
             isItalic: (try? c.decode(Bool.self, forKey: .isItalic)) ?? inferredTraits.contains(.traitItalic),
             color: (try? c.decode(RGBA.self, forKey: .color)) ?? RGBA(),
@@ -211,22 +238,32 @@ extension TextStyle {
 
     var nsColor: NSColor { color.nsColor }
 
-    var paragraphStyle: NSParagraphStyle {
+    func paragraphStyle(size: CGFloat, alignment override: NSTextAlignment? = nil) -> NSParagraphStyle {
         let p = NSMutableParagraphStyle()
-        switch alignment {
-        case .left: p.alignment = .left
-        case .center: p.alignment = .center
-        case .right: p.alignment = .right
+        if let override {
+            p.alignment = override
+        } else {
+            switch alignment {
+            case .left: p.alignment = .left
+            case .center: p.alignment = .center
+            case .right: p.alignment = .right
+            }
         }
         p.lineBreakMode = .byWordWrapping
+        let scaledSpacing = lineSpacing * Double(size) / max(1, fontSize * fontScale)
+        p.lineSpacing = CGFloat(scaledSpacing.isFinite ? scaledSpacing : 0)
         return p
+    }
+
+    func displayText(_ text: String) -> String {
+        fontCase.apply(to: text)
     }
 
     /// `includeColor: false` for bounding measurement (color doesn't affect size).
     func attributes(size: CGFloat, includeColor: Bool = true) -> [NSAttributedString.Key: Any] {
         var attrs: [NSAttributedString.Key: Any] = [
             .font: resolvedFont(size: size),
-            .paragraphStyle: paragraphStyle,
+            .paragraphStyle: paragraphStyle(size: size),
             .kern: tracking * Double(size) / max(1, fontSize * fontScale),
         ]
         if includeColor { attrs[.foregroundColor] = nsColor }

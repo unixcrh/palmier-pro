@@ -22,6 +22,8 @@ struct TextTab: View {
                 styleRow
                 sizeSlider
                 trackingRow
+                lineSpacingRow
+                fontCaseRow
                 alignmentRow
                 positionSection
                 colorRow
@@ -131,6 +133,46 @@ struct TextTab: View {
             resetValue: Self.defaults.tracking,
             keyPath: \.tracking
         )
+    }
+
+    private var lineSpacingRow: some View {
+        styleNumberRow(
+            label: "Line Spacing",
+            value: sharedTextStyleValue { $0.lineSpacing },
+            range: -100...300,
+            format: "%.1f",
+            suffix: " pt",
+            fitToContent: true,
+            resetValue: Self.defaults.lineSpacing,
+            keyPath: \.lineSpacing
+        )
+    }
+
+    private var fontCaseRow: some View {
+        InspectorRow(
+            label: "Font Case",
+            onReset: {
+                editor.commitTextStyles(clipIds: clipIds, fitToContent: true) {
+                    $0.fontCase = Self.defaults.fontCase
+                }
+            }
+        ) {
+            Menu {
+                ForEach(TextStyle.FontCase.allCases, id: \.self) { fontCase in
+                    Button(fontCase.label) {
+                        editor.commitTextStyles(clipIds: clipIds, fitToContent: true) {
+                            $0.fontCase = fontCase
+                        }
+                    }
+                }
+            } label: {
+                EditorMenuValue(text: sharedTextStyleValue { $0.fontCase }?.label ?? "—")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .focusable(false)
+        }
     }
 
     private var opacitySlider: some View {

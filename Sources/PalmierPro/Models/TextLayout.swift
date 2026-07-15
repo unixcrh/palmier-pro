@@ -12,7 +12,8 @@ enum TextLayout {
         maxWidth: CGFloat,
         canvasHeight: CGFloat
     ) -> CGSize {
-        let measured = content.isEmpty ? " " : content
+        let displayText = style.displayText(content)
+        let measured = displayText.isEmpty ? " " : displayText
         let canvasScale = canvasHeight / referenceCanvasHeight
         let renderSize = CGFloat(style.fontSize * style.fontScale) * canvasScale
         let str = NSAttributedString(

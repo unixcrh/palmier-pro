@@ -9,9 +9,9 @@ enum TextFrameRenderer {
 
     static func image(clip: Clip, frame: Int, renderSize: CGSize) -> CIImage? {
         guard renderSize.width >= 1, renderSize.height >= 1 else { return nil }
-        let content = clip.textContent ?? ""
-        guard !content.isEmpty else { return nil }
         let style = clip.textStyle ?? TextStyle()
+        let content = style.displayText(clip.textContent ?? "")
+        guard !content.isEmpty else { return nil }
         let box = boxRect(clip.transform, renderSize)
         let boxes = layoutBoxes(style: style, box: box, renderSize: renderSize)
         let fontSize = CGFloat(style.fontSize * style.fontScale) * (renderSize.height / TextLayout.referenceCanvasHeight)
@@ -238,10 +238,7 @@ enum TextFrameRenderer {
         guard !visible.isEmpty else { return finish(ctx) }
         // Left-anchor so the text reveals rightward in place rather than re-centering as it grows.
         var attrs = style.attributes(size: fontSize)
-        let para = NSMutableParagraphStyle()
-        para.alignment = .left
-        para.lineBreakMode = .byWordWrapping
-        attrs[.paragraphStyle] = para
+        attrs[.paragraphStyle] = style.paragraphStyle(size: fontSize, alignment: .left)
         CTFrameDraw(layoutFrame(NSAttributedString(string: visible, attributes: attrs), box: boxes.text), ctx)
         return finish(ctx)
     }

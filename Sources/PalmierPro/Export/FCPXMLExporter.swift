@@ -475,7 +475,7 @@ enum FCPXMLExporter {
 
             var textNodes: [FCPXMLNode] = [
                 FCPXMLNode(name: "text", children: [
-                    FCPXMLNode(name: "text-style", attributes: [("ref", styleId)], text: content),
+                    FCPXMLNode(name: "text-style", attributes: [("ref", styleId)], text: style.displayText(content)),
                 ]),
                 FCPXMLNode(name: "text-style-def", attributes: [("id", styleId)], children: [
                     FCPXMLNode(name: "text-style", attributes: textStyleAttributes(for: style)),
